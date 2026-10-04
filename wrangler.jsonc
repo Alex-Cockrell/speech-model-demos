@@ -1,0 +1,17 @@
+// Cloudflare Workers deployment of the static export: a Worker with static assets only (no Worker
+// script, no SSR, no inference). `npm run build` writes out/, `npx wrangler deploy` uploads it, and
+// Workers Builds (Git integration) does the same with build command `npm run build`.
+//
+// Keep this file even when deploying with Pages: without a Wrangler config, `wrangler deploy` and
+// Workers Builds run automatic framework configuration, which turns a Next.js app into a
+// server-rendered Worker. Cloudflare Pages skips this file because it has no pages_build_output_dir.
+// Headers (COOP/COEP, caching) come from out/_headers. See README "Deploying to Cloudflare".
+{
+  "name": "speech-model-demos",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./out",
+    // Next's static export writes out/404.html; serve it with status 404 for unknown paths.
+    "not_found_handling": "404-page"
+  }
+}

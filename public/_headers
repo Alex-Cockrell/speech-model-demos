@@ -1,7 +1,23 @@
-# Cloudflare Pages / Workers static assets headers. OWNER: platform agent.
-# Cross-origin isolation enables SharedArrayBuffer → multithreaded ONNX Runtime WASM (spec §16).
+# Cloudflare static-asset response headers. Pages and Workers static assets both read this file
+# (it is not served itself); scripts/serve-out.mjs applies the same rules for `npm run preview`.
+# OWNER: platform agent.
+#
+# Every rule whose pattern matches a URL applies. A header set by two matching rules is sent once
+# with both values joined by ", ", so each header below is set by exactly one rule. A Cache-Control
+# set here replaces Cloudflare's default "public, max-age=0, must-revalidate".
+
+# Cross-origin isolation (COOP + COEP) enables SharedArrayBuffer and therefore multithreaded ONNX
+# Runtime WASM (spec section 16). Model files on Hugging Face / R2 are fetched with CORS, which satisfies COEP.
 /*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Resource-Policy: same-origin
   X-Content-Type-Options: nosniff
+
+# Content-hashed Next.js build output (includes the .wasm files Turbopack emits).
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# ONNX Runtime assets, in per-version directories (scripts/copy-ort-assets.mjs).
+/ort/*
+  Cache-Control: public, max-age=31536000, immutable

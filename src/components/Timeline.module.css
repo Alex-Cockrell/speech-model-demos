@@ -1,0 +1,164 @@
+.scroll {
+  max-height: 26rem;
+  overflow: auto;
+}
+
+.asrTable td:last-child {
+  min-width: 12em;
+  overflow-wrap: anywhere;
+}
+
+.eventRow td {
+  color: var(--ink-3);
+}
+
+.finalRow td {
+  font-weight: 650;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.summary strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.underrunRow td {
+  background: var(--tint-warn);
+}
+
+.chunkText {
+  min-width: 14em;
+  max-width: 30em;
+}
+
+/* ---- chunk chart ---- */
+
+.chart {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.plot {
+  --label-w: 2.25rem;
+  position: relative;
+  padding-right: 16px;
+}
+
+.gridLines {
+  position: absolute;
+  top: 0;
+  bottom: 22px;
+  left: var(--label-w);
+  right: 16px;
+  pointer-events: none;
+}
+
+.gridLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--hairline);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--label-w) minmax(0, 1fr);
+  align-items: center;
+  height: 18px;
+}
+
+.rowLabel {
+  padding-right: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  color: var(--ink-3);
+}
+
+.track {
+  position: relative;
+  height: 100%;
+}
+
+.bar {
+  position: absolute;
+  top: 4px;
+  height: 10px;
+  min-width: 2px;
+  border-radius: 2px;
+}
+
+.genBar {
+  background: var(--series-1);
+}
+
+.playBar {
+  background: var(--series-2);
+}
+
+.gapBar {
+  background: var(--tint-critical);
+  box-shadow: inset 0 0 0 1px var(--critical);
+}
+
+.track .gapBar {
+  top: 2px;
+  height: 14px;
+}
+
+.axis {
+  display: grid;
+  grid-template-columns: var(--label-w) minmax(0, 1fr);
+  height: 22px;
+}
+
+.axisTrack {
+  position: relative;
+  border-top: 1px solid var(--axis);
+}
+
+.tick {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.tick:first-child {
+  transform: none;
+}

@@ -1,0 +1,385 @@
+/* Shared dashboard primitives: panel, label/value list, chips, notices, meters, form fields, tables. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 30px;
+}
+
+.panelTitle {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.panelSubtitle {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ---- label / value list ---- */
+
+.kv {
+  display: grid;
+  grid-template-columns: minmax(8.5em, max-content) minmax(0, 1fr);
+  column-gap: 16px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.kv > dt,
+.kv > dd {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.kv > :nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.kv > dt {
+  color: var(--ink-2);
+}
+
+.kv > dd {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.kvNumeric > dd {
+  text-align: right;
+}
+
+.kvStrong {
+  font-weight: 700;
+}
+
+.kvHint {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---- chips ---- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.chipIcon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.chip-ok {
+  background: var(--tint-good);
+}
+.chip-ok .chipIcon {
+  color: var(--good-ink);
+}
+.chip-warn {
+  background: var(--tint-warn);
+}
+.chip-warn .chipIcon {
+  color: var(--warn-glyph);
+}
+.chip-err {
+  background: var(--tint-critical);
+}
+.chip-err .chipIcon {
+  color: var(--critical);
+}
+.chip-info {
+  background: var(--tint-info);
+}
+.chip-info .chipIcon {
+  color: var(--accent);
+}
+.chip-neutral .chipIcon {
+  color: var(--ink-3);
+}
+
+/* ---- notices ---- */
+
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.noticeIcon {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.noticeBody {
+  min-width: 0;
+}
+
+.noticeTitle {
+  font-weight: 650;
+}
+
+.noticeText {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.notice-ok {
+  border-left-color: var(--good);
+  background: var(--tint-good);
+}
+.notice-ok .noticeIcon {
+  color: var(--good-ink);
+}
+.notice-warn {
+  border-left-color: var(--warn);
+  background: var(--tint-warn);
+}
+.notice-warn .noticeIcon {
+  color: var(--warn-glyph);
+}
+.notice-err {
+  border-left-color: var(--critical);
+  background: var(--tint-critical);
+}
+.notice-err .noticeIcon {
+  color: var(--critical);
+}
+.notice-info {
+  border-left-color: var(--accent);
+  background: var(--tint-info);
+}
+.notice-info .noticeIcon {
+  color: var(--accent);
+}
+
+/* ---- meter ---- */
+
+.meter {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--accent-track);
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+.meter-warn {
+  background: var(--warn);
+}
+
+.meter-err {
+  background: var(--critical);
+}
+
+.meterIndeterminate {
+  width: 30%;
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meterIndeterminate {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
+  .meterFill {
+    transition: none;
+  }
+}
+
+/* ---- form fields ---- */
+
+.field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.fieldHint {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  padding: 2px;
+  gap: 2px;
+}
+
+.segment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-weight: 550;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.segment input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segment:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.segment:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.segmentOn {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* ---- buttons & inline feedback ---- */
+
+.inlineAction {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.inlineError {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.inlineError::before {
+  content: '✕ ';
+  color: var(--critical);
+}
+
+.dangerButton,
+.dangerButton:hover:not(:disabled) {
+  border-color: var(--critical);
+  background: var(--critical);
+  color: #fff;
+}
+
+/* ---- tables (wrapped so only the table scrolls on narrow screens) ---- */
+
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--axis);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table .numCell {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table th.numCell {
+  font-family: var(--font-sans);
+}

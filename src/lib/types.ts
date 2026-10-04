@@ -224,7 +224,7 @@ export interface AsrRunMetrics {
 export type KokoroDtype = 'fp32' | 'fp16' | 'q8' | 'q4' | 'q4f16';
 
 export interface TtsSettings {
-  /** 'auto' → q8 on WASM, fp32 on WebGPU (kokoro-js recommendation). */
+  /** 'auto' → fp16 on WASM (q8's int8 path is ~2× slower there), fp32 on WebGPU (kokoro-js recommendation). */
   dtype: 'auto' | KokoroDtype;
   voice: string;
   speed: number;
@@ -360,7 +360,16 @@ export interface EnvironmentInfo {
   deviceMemoryGB: number | null;
   crossOriginIsolated: boolean;
   sharedArrayBuffer: boolean;
-  wasm: { simd: boolean; threads: boolean };
+  wasm: {
+    /** The WebAssembly API exists (V8 jitless mode, e.g. Edge Enhanced Security Mode, can remove it). */
+    available: boolean;
+    simd: boolean;
+    threads: boolean;
+    /** Time for a fixed 10M-iteration integer loop; a few ms when JIT-compiled. null if it could not run. */
+    speedProbeMs: number | null;
+    /** The probe ran far slower than compiled code would: WebAssembly is probably being interpreted. */
+    likelyInterpreted: boolean | null;
+  };
   webgpu: WebGpuInfo;
   storage: StorageInfo;
   online: boolean;

@@ -1,4 +1,73 @@
-/* OWNER: UI agent. Base reset only; the dashboard styles live with the components. */
+/* OWNER: UI agent. Design tokens, base elements and two global utilities; component styles live in CSS modules. */
+
+:root {
+  color-scheme: light dark;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Surfaces and ink */
+  --page: #f3f3f0;
+  --surface: #fcfcfb;
+  --surface-sunken: #f2f1ed;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #6b6a65;
+  --hairline: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.12);
+
+  /* Accent (blue ramp). --accent-fill carries white text at >= 4.5:1. */
+  --accent: #2a78d6;
+  --accent-fill: #256abf;
+  --accent-ink: #1c5cab;
+  --accent-track: #cde2fb;
+  --focus: #2a78d6;
+
+  /* Chart series (validated categorical slots 1-2) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+
+  /* Status: always paired with an icon and a label, never colour alone */
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --warn: #fab219;
+  --warn-glyph: #0b0b0b;
+  --critical: #d03b3b;
+
+  --tint-good: color-mix(in srgb, var(--good) 10%, var(--surface));
+  --tint-warn: color-mix(in srgb, var(--warn) 18%, var(--surface));
+  --tint-critical: color-mix(in srgb, var(--critical) 10%, var(--surface));
+  --tint-info: color-mix(in srgb, var(--accent) 9%, var(--surface));
+
+  --radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-sunken: #141413;
+    --ink: #f4f4f1;
+    --ink-2: #c3c2b7;
+    --ink-3: #9d9b93;
+    --hairline: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.12);
+
+    --accent: #3987e5;
+    --accent-ink: #86b6ef;
+    --accent-track: #0d366b;
+    --focus: #86b6ef;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+
+    --good-ink: #0ca30c;
+    --warn-glyph: #fab219;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -9,4 +78,97 @@ html,
 body {
   margin: 0;
   padding: 0;
+}
+
+html {
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--page);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface-sunken);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+select,
+input[type='text'],
+input[type='url'] {
+  min-height: 32px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+details > summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+/* Numbers that line up in columns: monospace, tabular figures. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--ink-3);
 }

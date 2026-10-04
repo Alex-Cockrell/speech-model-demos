@@ -1,0 +1,115 @@
+.app {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 16px clamp(12px, 2.5vw, 28px) 48px;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 24px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--axis);
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.tagline {
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.version {
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/*
+ * Areas decouple placement from DOM order: the DOM follows the workflow (configure → load → record →
+ * results), which is also the phone order; wide screens put Environment next to Models.
+ */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-areas:
+    'set set set set set set set set set set set set'
+    'mod mod mod mod mod mod mod mod env env env env'
+    'run run run run run run run e2e e2e e2e e2e e2e'
+    'asr asr asr asr asr asr tts tts tts tts tts tts'
+    'atl atl atl atl atl ttl ttl ttl ttl ttl ttl ttl'
+    'his his his his his his his his sto sto sto sto';
+  gap: 12px;
+}
+
+.settings {
+  grid-area: set;
+}
+.models {
+  grid-area: mod;
+}
+.environment {
+  grid-area: env;
+}
+.recorder {
+  grid-area: run;
+}
+.endToEnd {
+  grid-area: e2e;
+}
+.asr {
+  grid-area: asr;
+}
+.tts {
+  grid-area: tts;
+}
+.asrTimeline {
+  grid-area: atl;
+}
+.ttsTimeline {
+  grid-area: ttl;
+}
+.history {
+  grid-area: his;
+}
+.storage {
+  grid-area: sto;
+}
+
+@media (max-width: 1199px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'set set'
+      'mod mod'
+      'run run'
+      'e2e e2e'
+      'asr tts'
+      'atl atl'
+      'ttl ttl'
+      'his his'
+      'env sto';
+  }
+}
+
+@media (max-width: 759px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'set' 'mod' 'run' 'e2e' 'asr' 'tts' 'atl' 'ttl' 'his' 'env' 'sto';
+  }
+}

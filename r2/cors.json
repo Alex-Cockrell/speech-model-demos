@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "id": "speech-poc-model-downloads",
+      "allowed": {
+        "origins": ["https://speech-test.example.com", "http://localhost:3000"],
+        "methods": ["GET", "HEAD"]
+      },
+      "exposeHeaders": ["Content-Length", "Content-Type", "ETag"],
+      "maxAgeSeconds": 86400
+    }
+  ]
+}

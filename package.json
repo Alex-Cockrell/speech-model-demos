@@ -4,9 +4,14 @@
   "private": true,
   "description": "Browser-local speech pipeline proof of concept: microphone -> Parakeet ASR -> transcript -> Kokoro TTS -> speaker, with benchmark instrumentation.",
   "scripts": {
+    "predev": "node scripts/copy-ort-assets.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-ort-assets.mjs",
     "build": "next build",
-    "typecheck": "tsc --noEmit"
+    "preview": "node scripts/serve-out.mjs",
+    "typecheck": "tsc --noEmit",
+    "copy-ort-assets": "node scripts/copy-ort-assets.mjs",
+    "mirror-models": "node scripts/mirror-models-to-r2.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

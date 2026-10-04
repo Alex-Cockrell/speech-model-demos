@@ -1,0 +1,238 @@
+/* Panel-specific styles shared by the smaller panels (settings, models, environment, metrics, history, storage). */
+
+.hint {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.fieldError {
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.fieldError::before {
+  content: '✕ ';
+  color: var(--critical);
+}
+
+.breakAll {
+  word-break: break-all;
+}
+
+.details {
+  font-size: 13px;
+}
+
+.details[open] > summary {
+  margin-bottom: 6px;
+}
+
+.userAgent {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.compactList {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.panelStatus {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.primaryButton {
+  border-color: transparent;
+  background: var(--accent-fill);
+  color: #fff;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-fill) 82%, #000);
+}
+
+/* ---- settings ---- */
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px 22px;
+  align-items: start;
+}
+
+.fieldsetStack {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+
+.fieldset {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fieldset > legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fieldset input[type='text'],
+.fieldset input[type='url'],
+.fieldset select {
+  width: 100%;
+}
+
+/* ---- models ---- */
+
+.modelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 12px;
+}
+
+.modelCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+
+.modelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.modelName {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.modelDisplayName {
+  flex: 1 1 auto;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.progress {
+  display: grid;
+  gap: 4px;
+}
+
+.progressHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.progressFile {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loadKind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.loadKindBadge {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fileName {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.fileError::before {
+  content: '✕ ';
+  color: var(--critical);
+}
+
+/* ---- end-to-end hero ---- */
+
+.hero {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.heroLabel {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+
+/* Proportional figures on purpose: tabular digits look loose at display size. */
+.heroValue {
+  font-size: clamp(44px, 5vw, 60px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.heroUnit {
+  font-size: 0.4em;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+
+.heroCaption {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---- history ---- */
+
+.issues {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
