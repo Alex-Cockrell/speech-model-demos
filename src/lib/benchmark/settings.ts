@@ -97,7 +97,8 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       partialIntervalMs: oneOf(asr.partialIntervalMs, PARTIAL_INTERVAL_CHOICES, d.asr.partialIntervalMs),
       minSilenceMs: oneOf(asr.minSilenceMs, MIN_SILENCE_CHOICES, d.asr.minSilenceMs),
       maxSegmentMs: oneOf(asr.maxSegmentMs, MAX_SEGMENT_CHOICES, d.asr.maxSegmentMs),
-      finalPass: oneOf(asr.finalPass, FINAL_PASSES, d.asr.finalPass),
+      // Settings saved by version 1 (no partialIntervalMs yet) carry its old 'full' default; give them the new one.
+      finalPass: asr.partialIntervalMs === undefined ? d.asr.finalPass : oneOf(asr.finalPass, FINAL_PASSES, d.asr.finalPass),
       wasmThreads: oneOf(asr.wasmThreads, WASM_THREAD_CHOICES, d.asr.wasmThreads),
     },
     tts: {
