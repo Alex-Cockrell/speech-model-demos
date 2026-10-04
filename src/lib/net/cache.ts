@@ -8,6 +8,18 @@ export const MODEL_CACHE_NAMES = ['transformers-cache', 'kokoro-voices', 'speech
 /** IndexedDB databases that may hold model files (parakeet.js's own hub cache, if ever used). */
 export const MODEL_IDB_NAMES = ['parakeet-cache-db'] as const;
 
+/** What each store above holds, as shown in the UI (which never names the underlying models or libraries). */
+const MODEL_STORE_LABELS: Record<string, string> = {
+  'transformers-cache': 'voice model',
+  'kokoro-voices': 'voices',
+  'speech-poc-models-v1': 'transcription and speaker models',
+  'parakeet-cache-db': 'transcription model (secondary cache)',
+};
+
+export function modelStoreLabel(name: string): string {
+  return MODEL_STORE_LABELS[name] ?? 'model files';
+}
+
 /**
  * How long an IndexedDB deletion may stay 'blocked' before giving up. A worker that was just
  * terminated releases its connection within milliseconds; another open tab of the app never does.
@@ -23,7 +35,7 @@ export async function clearModelCaches(): Promise<string[]> {
   const deleted: string[] = [];
   if (typeof caches !== 'undefined') {
     for (const name of MODEL_CACHE_NAMES) {
-      if (await caches.delete(name)) deleted.push(`Cache Storage: ${name}`);
+      if (await caches.delete(name)) deleted.push(`${modelStoreLabel(name)} (Cache Storage)`);
     }
   }
   if (typeof indexedDB !== 'undefined') {
@@ -31,7 +43,7 @@ export async function clearModelCaches(): Promise<string[]> {
     for (const name of MODEL_IDB_NAMES) {
       if (existing && !existing.has(name)) continue;
       await deleteDatabase(name);
-      deleted.push(`IndexedDB: ${name}`);
+      deleted.push(`${modelStoreLabel(name)} (IndexedDB)`);
     }
   }
   return deleted;
@@ -134,14 +146,14 @@ function deleteDatabase(name: string): Promise<void> {
     };
     request.onerror = () => {
       clearTimeout(timer);
-      reject(new Error(`Deleting IndexedDB "${name}" failed: ${request.error?.message ?? 'unknown error'}`));
+      reject(new Error(`Deleting the ${modelStoreLabel(name)} from IndexedDB failed: ${request.error?.message ?? 'unknown error'}`));
     };
     // 'blocked' means another connection is still open; the deletion completes once it closes.
     request.onblocked = () => {
       timer ??= setTimeout(() => {
         reject(
           new Error(
-            `Deleting IndexedDB "${name}" is blocked by another open connection — close other tabs of this app. ` +
+            `Deleting the ${modelStoreLabel(name)} from IndexedDB is blocked by another open connection — close other tabs of this app. ` +
               'The deletion finishes once they close.',
           ),
         );

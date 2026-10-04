@@ -1,10 +1,12 @@
 /**
- * Kokoro TTS worker: kokoro-js (transformers.js + ONNX Runtime Web) load, warm-up and streaming synthesis.
+ * Kokoro TTS worker: kokoro-js (transformers.js + ONNX Runtime Web) load, warm-up and synthesis — streaming a
+ * whole text (speak, the benchmark) or one piece on demand (synthesize, read aloud).
  * Message protocol: ./protocol.ts. TtsEngine spawns a fresh worker for every load configuration, so a worker
  * loads exactly one model.
  */
 import { env, type ProgressInfo } from '@huggingface/transformers';
 import { KokoroTTS, type GenerateOptions } from 'kokoro-js';
+import { voiceName } from '../benchmark/settings';
 import { now, setMainTimeOrigin } from '../clock';
 import { KOKORO_MODEL, ORT_ASSETS } from '../config';
 import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '../net/instrument';
@@ -13,11 +15,13 @@ import {
   errorMessage,
   type LoadRequest,
   type SpeakRequest,
+  type SynthesizeRequest,
   type TtsWorkerEvent,
   type TtsWorkerRequest,
   type WorkerLoadResult,
 } from './protocol';
 import { splitterFor } from './split';
+import { KOKORO_SAMPLE_RATE, synthesizePiece, type PieceSynthesis } from './synthesize';
 import { prefetchVoice } from './voice-cache';
 
 type KokoroVoice = NonNullable<GenerateOptions['voice']>;
@@ -31,7 +35,7 @@ const WASM_INIT_TIMEOUT_MS = 120_000;
 let instrumentation: FetchInstrumentation | null = null;
 let tts: KokoroTTS | null = null;
 let loadedVoice: string | null = null;
-/** Speak runs execute one after another; a new run waits for the previous one's in-flight inference. */
+/** Speak runs and synthesize requests execute one after another; each waits for the previous one's inference. */
 let speakQueue: Promise<void> = Promise.resolve();
 const queuedRuns = new Set<number>();
 const cancelledRuns = new Set<number>();
@@ -52,7 +56,7 @@ async function load(req: LoadRequest): Promise<WorkerLoadResult> {
   const started = now();
 
   const wasm = env.backends.onnx.wasm;
-  if (!wasm) throw new Error('ONNX Runtime Web did not expose its WASM backend settings.');
+  if (!wasm) throw new Error('The inference runtime did not expose its WASM backend settings.');
   // A string prefix makes ORT import its standalone .mjs glue from our origin, so its pthread workers are
   // created from that real file instead of the bundled worker chunk. ORT expects an absolute URL here.
   wasm.wasmPaths = new URL(ORT_ASSETS.kokoro.wasmPaths, self.location.href).href;
@@ -68,7 +72,7 @@ async function load(req: LoadRequest): Promise<WorkerLoadResult> {
   const doneAt = new Map<string, number>();
 
   if (req.device === 'webgpu') await assertWebGpuAdapter();
-  progress({ phase: 'download', message: `Loading ${weights} (${req.dtype}) for ${req.device}` });
+  progress({ phase: 'download', message: `Loading the voice model (${req.dtype}) for ${req.device}` });
   const [model] = await Promise.all([
     KokoroTTS.from_pretrained(KOKORO_MODEL.repo, {
       dtype: req.dtype,
@@ -196,19 +200,25 @@ function wasmRuntimeInfo(requested: number, wasm: OrtWasmFlags): WasmRuntimeInfo
   };
 }
 
+/** Why a voice may fail: only the load-time voice is downloaded up front (display names, not voice ids). */
+function notPreloaded(voice: string): string {
+  const loaded = loadedVoice ? `only ${voiceName(loadedVoice)} was downloaded with the model` : 'no voice was downloaded with the model';
+  return `the ${voiceName(voice)} voice was not downloaded at load time; ${loaded}`;
+}
+
 function singleThreadReason(): string {
   if (!globalThis.crossOriginIsolated) {
-    return 'The page is not cross-origin isolated (COOP/COEP headers missing), so SharedArrayBuffer is unavailable and ONNX Runtime runs single-threaded.';
+    return 'The page is not cross-origin isolated (COOP/COEP headers missing), so SharedArrayBuffer is unavailable and inference runs single-threaded.';
   }
   if (typeof SharedArrayBuffer === 'undefined') {
-    return 'SharedArrayBuffer is unavailable, so ONNX Runtime runs single-threaded.';
+    return 'SharedArrayBuffer is unavailable, so inference runs single-threaded.';
   }
-  return 'ONNX Runtime could not start WebAssembly threads and fell back to one thread (see the console warning).';
+  return 'The runtime could not start WebAssembly threads and fell back to one thread (see the console warning).';
 }
 
 async function speak(req: SpeakRequest): Promise<void> {
   const model = tts;
-  if (!model) throw new Error('Kokoro is not loaded in this worker.');
+  if (!model) throw new Error('The voice model is not loaded in this worker.');
   let index = 0;
   try {
     if (!cancelledRuns.has(req.id)) {
@@ -232,9 +242,71 @@ async function speak(req: SpeakRequest): Promise<void> {
   } catch (e) {
     if (req.voice === loadedVoice) throw e;
     // kokoro-js fetches a voice that load() did not pre-fetch on first use, which fails offline.
-    throw new Error(`${errorMessage(e)} (voice "${req.voice}" was not pre-loaded; load() fetched "${loadedVoice}")`);
+    throw new Error(`${errorMessage(e)} (${notPreloaded(req.voice)})`);
   }
   post({ type: 'done', id: req.id, generationCompleteAt: now(), chunkCount: index, cancelled: cancelledRuns.has(req.id) });
+}
+
+// ---------------------------------------------------------------------------
+// synthesize: one piece on demand (read aloud)
+// ---------------------------------------------------------------------------
+
+async function synthesize(req: SynthesizeRequest): Promise<void> {
+  const model = tts;
+  if (!model) throw new Error('The voice model is not loaded in this worker.');
+  if (cancelledRuns.has(req.id)) {
+    post({
+      type: 'synthesized',
+      id: req.id,
+      audio: new Float32Array(0),
+      sampleRate: KOKORO_SAMPLE_RATE,
+      generationStart: null,
+      generatedAt: now(),
+      inferences: 0,
+      maxTokens: 0,
+      overflowSplits: 0,
+      truncated: false,
+      skipped: true,
+    });
+    return;
+  }
+  const generationStart = now();
+  let result: PieceSynthesis;
+  try {
+    result = await synthesizePiece(model, req.text, { voice: req.voice, speed: req.speed });
+  } catch (e) {
+    if (req.voice === loadedVoice) throw e;
+    // kokoro-js downloads a voice that load() did not pre-fetch on first use, which fails offline.
+    throw new Error(`${errorMessage(e)} (${notPreloaded(req.voice)})`);
+  }
+  const audio = ownedSamples(result.audio);
+  post(
+    {
+      type: 'synthesized',
+      id: req.id,
+      audio,
+      sampleRate: result.sampleRate,
+      generationStart,
+      generatedAt: now(),
+      inferences: result.inferences,
+      maxTokens: result.maxTokens,
+      overflowSplits: result.overflowSplits,
+      truncated: result.truncated,
+      skipped: false,
+    },
+    [audio.buffer],
+  );
+}
+
+/**
+ * Error text for the main thread, which shows it in the UI. Library errors can quote a model file's URL (the
+ * host and the model repository), so that is replaced; the console keeps the original.
+ */
+function uiError(e: unknown): string {
+  const message = errorMessage(e);
+  const redacted = message.replace(/"?https?:\/\/[^\s"'<>]*\/resolve\/[^\s"'<>]+"?/g, 'a model file');
+  if (redacted !== message) console.warn('[tts]', message);
+  return redacted;
 }
 
 /** The PCM in a Float32Array that owns its whole buffer, so the buffer can be transferred. */
@@ -252,14 +324,15 @@ self.addEventListener('message', (event: MessageEvent<TtsWorkerRequest>) => {
     case 'load':
       load(msg).then(
         (result) => post({ type: 'loaded', id: msg.id, result }),
-        (e: unknown) => post({ type: 'error', id: msg.id, message: errorMessage(e) }),
+        (e: unknown) => post({ type: 'error', id: msg.id, message: uiError(e) }),
       );
       return;
     case 'speak':
+    case 'synthesize':
       queuedRuns.add(msg.id);
       speakQueue = speakQueue
-        .then(() => speak(msg))
-        .catch((e: unknown) => post({ type: 'error', id: msg.id, message: errorMessage(e) }))
+        .then(() => (msg.type === 'speak' ? speak(msg) : synthesize(msg)))
+        .catch((e: unknown) => post({ type: 'error', id: msg.id, message: uiError(e) }))
         .finally(() => {
           queuedRuns.delete(msg.id);
           cancelledRuns.delete(msg.id);
@@ -278,8 +351,8 @@ self.addEventListener('message', (event: MessageEvent<TtsWorkerRequest>) => {
 self.addEventListener('error', (event: ErrorEvent) => {
   event.preventDefault();
   console.error(event.error ?? event.message);
-  post({ type: 'error', id: null, message: `Uncaught error in the TTS worker: ${event.message}` });
+  post({ type: 'error', id: null, message: `Uncaught error in the TTS worker: ${uiError(event.message)}` });
 });
 self.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
-  post({ type: 'error', id: null, message: `Unhandled rejection in the TTS worker: ${errorMessage(event.reason)}` });
+  post({ type: 'error', id: null, message: `Unhandled rejection in the TTS worker: ${uiError(event.reason)}` });
 });

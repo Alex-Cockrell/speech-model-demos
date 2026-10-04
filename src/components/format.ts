@@ -1,3 +1,5 @@
+import { voiceName } from '@/lib/benchmark/settings';
+import { KOKORO_MODEL, PARAKEET_MODEL, SPEAKER_MODEL } from '@/lib/config';
 import type { BackendChoice, LoadKind } from '@/lib/types';
 
 export const DASH = '—';
@@ -88,4 +90,28 @@ export function threadsLabel(n: number): string {
 
 export function shortSha(sha: string | null | undefined): string {
   return sha ? sha.slice(0, 7) : DASH;
+}
+
+/** Weight files by what they are; their real names identify the models. */
+const WEIGHT_FILE_LABELS = new Map<string, string>([
+  ...Object.entries(PARAKEET_MODEL.files.encoder).flatMap(([quant, files]) =>
+    files.map((f, i): [string, string] => [f, `encoder weights (${quant}${i > 0 ? ', data' : ''})`]),
+  ),
+  [PARAKEET_MODEL.files.decoder, 'decoder weights (int8)'],
+  ...Object.entries(KOKORO_MODEL.dtypeFiles).map(([dtype, f]): [string, string] => [f, `model weights (${dtype})`]),
+  [SPEAKER_MODEL.files.model, 'model weights (fp32)'],
+]);
+
+/**
+ * A model or runtime file as shown on screen. Records and the benchmark JSON keep the real names, which give away the
+ * models, the runtime and the voice ids, so the UI says what each file is instead.
+ */
+export function fileLabel(file: string): string {
+  const weights = WEIGHT_FILE_LABELS.get(file);
+  if (weights) return weights;
+  const voice = /^voices\/(.+)\.bin$/.exec(file);
+  if (voice) return `voice (${voiceName(voice[1])})`;
+  const name = file.slice(file.lastIndexOf('/') + 1);
+  if (/\.onnx(?:\.data)?$/i.test(name)) return 'model weights';
+  return name.replace(/^ort-/, 'runtime-');
 }

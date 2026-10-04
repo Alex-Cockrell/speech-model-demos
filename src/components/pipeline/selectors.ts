@@ -1,5 +1,5 @@
 /** Derived, display-only views of the pipeline state. */
-import { resolveModelSource, type AppSettings } from '@/lib/benchmark/settings';
+import { resolveModelSource, voiceName, type AppSettings } from '@/lib/benchmark/settings';
 import { checkTestCase, findTestCase, type TestCase, type TestCaseCheck } from '@/lib/benchmark/testMatrix';
 import type { EnvironmentInfo, ModelKey, ModelSource } from '@/lib/types';
 import { BACKEND_LABEL, threadsLabel } from '../format';
@@ -10,7 +10,7 @@ function change(label: string, from: string, to: string): string | null {
 }
 
 function sourceLabel(source: ModelSource): string {
-  return source.kind === 'huggingface' ? 'Hugging Face' : source.baseUrl;
+  return source.kind === 'huggingface' ? 'Public model host' : source.baseUrl;
 }
 
 function present(items: (string | null)[]): string[] {
@@ -43,7 +43,7 @@ export function pendingChanges(models: ModelsState, settings: AppSettings): Reco
       ? present([
           ...common(tts),
           change('dtype', tts.settings.dtype, t.dtype),
-          change('Voice', tts.settings.voice, t.voice),
+          change('Voice', voiceName(tts.settings.voice), voiceName(t.voice)),
           change('WASM threads', threadsLabel(tts.settings.wasmThreads), threadsLabel(t.wasmThreads)),
         ])
       : [],

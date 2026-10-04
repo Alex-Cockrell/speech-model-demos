@@ -1,17 +1,22 @@
 /**
  * ASR engine (main-thread facade). OWNER: ASR agent.
  *
- * Microphone → AudioWorklet PCM capture (capture.ts) → 16 kHz mono → energy VAD + level meter →
- * chunkMs batches → Web Worker running parakeet.js (asr.worker.ts, messages in protocol.ts) →
- * StatefulStreamingTranscriber partials → final transcript, from one full-utterance pass after Stop
- * (finalPass 'full') or the concatenated streaming text (finalPass 'streaming').
+ * Microphone / call audio → AudioWorklet capture (capture.ts, one AudioContext) → 16 kHz mono → voice-activity
+ * segmentation per source (segmenter.ts) → scheduling (transcriber.ts): each open segment is re-transcribed from
+ * its start every partialIntervalMs for live text, and once more when it ends for its final text → one Web Worker
+ * running parakeet.js (asr.worker.ts via worker-client.ts, messages in protocol.ts).
  *
- * Settings: chunkMs and finalPass are read when a recording starts, from the last load() call. Call
- * load() before each run; with nothing load-relevant changed it returns a 'session' record at once.
+ * Two ways to use it, never at the same time:
+ *  - startRecording / stopRecording: the benchmark (recording.ts → AsrRunMetrics);
+ *  - startSession: continuous multi-source meeting transcription (live-session.ts, contract in session.ts).
+ *
+ * Settings: partialIntervalMs, minSilenceMs, maxSegmentMs (and finalPass, for recordings) are read when a recording
+ * or session starts, from the last load() call (a session may override them). Call load() before each run; with
+ * nothing load-relevant changed it returns a 'session' record at once. load() is rejected while a recording or
+ * session is running. WASM threads 0 (automatic) means hardwareConcurrency − 2 (resolveWasmThreads in protocol.ts).
  */
-import { mainTimeOriginForWorkers, now, span } from '@/lib/clock';
+import { mainTimeOriginForWorkers, now } from '@/lib/clock';
 import { DEFAULT_ASR_SETTINGS, LIBRARY_VERSIONS, ORT_ASSETS, PARAKEET_MODEL } from '@/lib/config';
-import { intervalStats } from '@/lib/stats';
 import type {
   AsrRunMetrics,
   AsrSettings,
@@ -19,26 +24,20 @@ import type {
   DownloadMetrics,
   EnvironmentInfo,
   LoadProgress,
-  MicInfo,
   ModelLoadRecord,
   ModelSource,
-  PartialUpdate,
   ResolvedBackend,
 } from '@/lib/types';
-import { MicCapture } from './capture';
+import { stopStreams } from './capture';
+import { LiveSession, type Segmentation } from './live-session';
 import { DECODER_QUANT, resolveEncoderQuant } from './model-files';
-import { PcmQueue, meanSquare, padToMultiple } from './pcm';
-import {
-  ASR_SAMPLE_RATE,
-  ENCODER_FRAME_SAMPLES,
-  describeError,
-  type LoadRequest,
-  type LoadResult,
-  type MainToWorker,
-  type RunFinal,
-  type WorkerToMain,
-} from './protocol';
-import { EnergyVad } from './vad';
+import { describeError, type LoadResult } from './protocol';
+import { BenchmarkRecording, type AsrRecordingCallbacks } from './recording';
+import type { SessionCallbacks, SessionOptions, TranscriptionSession } from './session';
+import type { TranscriberLog } from './transcriber';
+import { AsrWorkerClient } from './worker-client';
+
+export type { AsrRecordingCallbacks } from './recording';
 
 export interface AsrLoadOptions {
   backend: BackendChoice;
@@ -49,38 +48,11 @@ export interface AsrLoadOptions {
   onProgress?: (p: LoadProgress) => void;
 }
 
-export interface AsrRecordingCallbacks {
-  onPartial?: (update: PartialUpdate) => void;
-  onSpeechStart?: (at: number) => void;
-  /** Microphone RMS level 0..1, roughly every 50 ms, for a level meter. */
-  onLevel?: (rms: number) => void;
-}
-
-const LEVEL_INTERVAL_SAMPLES = ASR_SAMPLE_RATE / 20;
-const ENCODER_FRAME_MS = (ENCODER_FRAME_SAMPLES / ASR_SAMPLE_RATE) * 1000;
-
-interface ActiveRecording {
-  id: number;
-  settings: AsrSettings;
-  callbacks: AsrRecordingCallbacks;
-  capture: MicCapture;
-  started: Promise<void>;
-  stopping: boolean;
-  micStart: number;
-  chunkSamples: number;
-  queue: PcmQueue;
-  vad: EnergyVad;
-  levelSum: number;
-  levelCount: number;
-  capturedSamples: number;
-  speechStart: number | null;
-  firstAudioSubmitted: number | null;
-  chunksSubmitted: number;
-  partials: PartialUpdate[];
-  visibleText: string;
-  firstPartialAt: number | null;
-  final: Deferred<RunFinal & { at: number }>;
-}
+const LOG: TranscriberLog = {
+  info: (message) => console.info(`[asr] ${message}`),
+  debug: (message) => console.debug(`[asr] ${message}`),
+  warn: (message) => console.warn(`[asr] ${message}`),
+};
 
 export class AsrEngine {
   private client: AsrWorkerClient | null = null;
@@ -88,8 +60,10 @@ export class AsrEngine {
   private loadedKey: string | null = null;
   private settings: AsrSettings = { ...DEFAULT_ASR_SETTINGS };
   private loadQueue: Promise<unknown> = Promise.resolve();
-  private recording: ActiveRecording | null = null;
-  private nextRunId = 1;
+  private recording: BenchmarkRecording | null = null;
+  private session: LiveSession | null = null;
+  private sessionStarting = false;
+  private runNo = 0;
 
   get isLoaded(): boolean {
     return this.client !== null && this.record !== null;
@@ -114,43 +88,21 @@ export class AsrEngine {
     return result;
   }
 
-  /** Opens the microphone and starts streaming transcription. Call from a user gesture. */
+  /** Opens the microphone and starts a benchmark recording. Call from a user gesture. */
   async startRecording(callbacks: AsrRecordingCallbacks): Promise<void> {
     const micStart = now();
     const client = this.client;
-    if (!client || !this.record) throw new Error('Load the Parakeet model before recording.');
+    if (!client || !this.record) throw new Error('Load the transcription model before recording.');
     if (this.recording) throw new Error('A recording is already in progress.');
+    if (this.session || this.sessionStarting) throw new Error('Stop the meeting transcription before recording.');
 
-    const settings = { ...this.settings };
-    const rec: ActiveRecording = {
-      id: this.nextRunId++,
-      settings,
-      callbacks,
-      capture: new MicCapture((samples) => this.onAudio(rec, samples)),
-      started: Promise.resolve(),
-      stopping: false,
-      micStart,
-      chunkSamples: (settings.chunkMs / 1000) * ASR_SAMPLE_RATE,
-      queue: new PcmQueue(),
-      vad: new EnergyVad(ASR_SAMPLE_RATE),
-      levelSum: 0,
-      levelCount: 0,
-      capturedSamples: 0,
-      speechStart: null,
-      firstAudioSubmitted: null,
-      chunksSubmitted: 0,
-      partials: [],
-      visibleText: '',
-      firstPartialAt: null,
-      final: deferred<RunFinal & { at: number }>(),
-    };
-    this.recording = rec;
-    client.post({ type: 'start', runId: rec.id });
-    rec.started = rec.capture.start();
+    const recording = new BenchmarkRecording(client, { ...this.settings }, callbacks, micStart, this.nextRunTag(), LOG);
+    this.recording = recording;
     try {
-      await rec.started;
+      await recording.started;
     } catch (err) {
-      this.abandon(rec, err instanceof Error ? err : new Error(describeError(err)));
+      recording.cancel();
+      if (this.recording === recording) this.recording = null;
       throw err;
     }
   }
@@ -158,40 +110,65 @@ export class AsrEngine {
   /** Stops the microphone, finalizes the transcript and returns the run's ASR metrics. */
   async stopRecording(): Promise<AsrRunMetrics> {
     const recordingStop = now();
-    const rec = this.recording;
-    if (!rec) throw new Error('No recording in progress.');
-    if (rec.stopping) throw new Error('The recording is already stopping.');
-    rec.stopping = true;
+    const recording = this.recording;
+    if (!recording) throw new Error('No recording in progress.');
     try {
-      await rec.started;
-      const mic = rec.capture.mic;
-      if (!mic) throw new Error('The microphone did not start.');
-      await rec.capture.stop();
-
-      const remainder = rec.queue.take(rec.queue.length);
-      const tail = remainder.length > 0 ? padToMultiple(remainder, ENCODER_FRAME_SAMPLES) : null;
-      if (tail) {
-        rec.firstAudioSubmitted ??= now();
-        if (rec.settings.finalPass === 'streaming') rec.chunksSubmitted++;
-      }
-      if (this.client) {
-        this.client.post({ type: 'finish', runId: rec.id, mode: rec.settings.finalPass, tail }, tail ? [tail.buffer] : []);
-      } else {
-        // No-op when a worker failure already rejected the run; its reason is the one reported.
-        rec.final.reject(new Error('The ASR worker is not running.'));
-      }
-      const final = await rec.final.promise;
-      return runMetrics(rec, mic, final, recordingStop, final.at);
+      return await recording.stop(recordingStop);
     } finally {
-      rec.capture.release();
-      if (this.recording === rec) this.recording = null;
+      if (this.recording === recording) this.recording = null;
     }
   }
 
   /** Abort a recording without producing metrics. */
   async cancelRecording(): Promise<void> {
-    const rec = this.recording;
-    if (rec) this.abandon(rec, new Error('The recording was cancelled.'));
+    const recording = this.recording;
+    this.recording = null;
+    recording?.cancel();
+  }
+
+  /**
+   * Continuous multi-source transcription for the meeting mode (contract: ./session.ts). Requires a loaded
+   * model; only one session or recording at a time. Call from the user's click (microphone permission).
+   * The session owns the streams it is given: they are stopped when it ends, or right away if it cannot start.
+   */
+  async startSession(opts: SessionOptions, callbacks: SessionCallbacks): Promise<TranscriptionSession> {
+    const provided = opts.sources.flatMap((source) => (source.stream ? [source.stream] : []));
+    let client: AsrWorkerClient;
+    try {
+      if (!this.client || !this.record) throw new Error('Load the transcription model before starting the meeting transcription.');
+      client = this.client;
+      if (this.recording) throw new Error('Finish the benchmark recording before starting the meeting transcription.');
+      if (this.session || this.sessionStarting) throw new Error('A meeting transcription is already running.');
+      checkSources(opts);
+      this.sessionStarting = true;
+    } catch (err) {
+      stopStreams(provided);
+      throw err;
+    }
+
+    try {
+      const segmentation = normalizeSettings({ ...this.settings, ...opts.segmentation });
+      const session: LiveSession = await LiveSession.start({
+        sources: opts.sources,
+        segmentation: pickSegmentation(segmentation),
+        runner: client,
+        runTag: this.nextRunTag(),
+        callbacks,
+        log: LOG,
+        onClosed: () => {
+          if (this.session === session) this.session = null;
+        },
+      });
+      if (this.client !== client) {
+        // Disposed, or the worker failed, while the devices were opening.
+        session.abort('The transcription model was unloaded while the meeting transcription was starting.');
+        throw new Error('The transcription model was unloaded while the meeting transcription was starting.');
+      }
+      this.session = session;
+      return session;
+    } finally {
+      this.sessionStarting = false;
+    }
   }
 
   /** fetch() calls the ASR worker has made since it started (privacy check). */
@@ -200,8 +177,15 @@ export class AsrEngine {
   }
 
   dispose(): void {
-    if (this.recording) this.abandon(this.recording, new Error('The ASR engine was disposed.'));
+    this.recording?.cancel();
+    this.recording = null;
+    this.session?.abort('The ASR engine was disposed; transcription stopped.');
+    this.session = null;
     this.unload();
+  }
+
+  private nextRunTag(): string {
+    return `run${++this.runNo}`;
   }
 
   // -------------------------------------------------------------------------
@@ -210,6 +194,13 @@ export class AsrEngine {
 
   private async loadNow(opts: AsrLoadOptions): Promise<ModelLoadRecord> {
     const loadStart = now();
+    if (this.recording || this.session || this.sessionStarting) {
+      throw new Error(
+        this.recording
+          ? 'A benchmark recording is running; the transcription model cannot be loaded or reconfigured until it has finished.'
+          : 'The meeting transcription is running; stop it before loading or reconfiguring the transcription model.',
+      );
+    }
     const settings = normalizeSettings(opts.settings);
     const key = JSON.stringify([opts.backend, opts.source.kind, opts.source.baseUrl, settings.encoderQuant, settings.wasmThreads]);
     if (this.client && this.record && this.loadedKey === key) {
@@ -217,7 +208,6 @@ export class AsrEngine {
       opts.onProgress?.({ model: 'parakeet', phase: 'ready', message: 'Already initialised in this page session.' });
       return sessionRecord(this.record, loadStart);
     }
-    if (this.recording) throw new Error('Stop the current recording before loading a different ASR configuration.');
 
     this.unload();
     try {
@@ -261,7 +251,6 @@ export class AsrEngine {
     const quant = resolveEncoderQuant(backend, settings.encoderQuant, opts.environment);
     const client: AsrWorkerClient = new AsrWorkerClient(
       (progress) => opts.onProgress?.(progress),
-      (message) => this.onRunMessage(message),
       (error) => this.onWorkerFailure(client, error),
     );
     this.client = client;
@@ -277,7 +266,6 @@ export class AsrEngine {
   }
 
   private unload(): void {
-    if (this.recording) this.recording.final.reject(new Error('The ASR model was unloaded during the recording.'));
     this.client?.terminate();
     this.client = null;
     this.record = null;
@@ -286,194 +274,45 @@ export class AsrEngine {
 
   private onWorkerFailure(client: AsrWorkerClient, error: Error): void {
     if (client !== this.client) return;
-    // The worker may be unusable now: drop it so the next load() starts a fresh one instead of hanging.
+    // The worker may be unusable now: drop it so the next load() starts a fresh one instead of hanging. A running
+    // recording or session learns about it from its passes failing (and reports it).
     this.unload();
     console.error('[asr] worker failure', error);
   }
-
-  // -------------------------------------------------------------------------
-  // Recording
-  // -------------------------------------------------------------------------
-
-  private onAudio(rec: ActiveRecording, samples: Float32Array): void {
-    if (this.recording !== rec) return;
-    rec.capturedSamples += samples.length;
-    rec.queue.push(samples);
-    while (rec.queue.length >= rec.chunkSamples) {
-      const chunk = rec.queue.take(rec.chunkSamples);
-      rec.firstAudioSubmitted ??= now();
-      rec.chunksSubmitted++;
-      this.client?.post({ type: 'chunk', runId: rec.id, audio: chunk }, [chunk.buffer]);
-    }
-
-    const speechSample = rec.vad.push(samples);
-    if (speechSample !== null) {
-      const at = rec.capture.timeAtSample(speechSample);
-      rec.speechStart = at;
-      notify(() => rec.callbacks.onSpeechStart?.(at));
-    }
-    rec.levelSum += meanSquare(samples) * samples.length;
-    rec.levelCount += samples.length;
-    if (rec.levelCount >= LEVEL_INTERVAL_SAMPLES) {
-      const rms = Math.min(1, Math.sqrt(rec.levelSum / rec.levelCount));
-      rec.levelSum = 0;
-      rec.levelCount = 0;
-      notify(() => rec.callbacks.onLevel?.(rms));
-    }
-  }
-
-  private onRunMessage(message: RunMessage): void {
-    const rec = this.recording;
-    if (!rec || message.runId !== rec.id) return;
-    if (message.type === 'final') {
-      rec.final.resolve({ ...message, at: now() });
-    } else if (message.type === 'runError') {
-      rec.final.reject(new Error(message.message));
-    } else if (message.text !== rec.visibleText) {
-      const update: PartialUpdate = { at: now(), text: message.text };
-      rec.visibleText = message.text;
-      rec.partials.push(update);
-      if (rec.firstPartialAt === null && message.text.trim() !== '') rec.firstPartialAt = update.at;
-      notify(() => rec.callbacks.onPartial?.(update));
-    }
-  }
-
-  private abandon(rec: ActiveRecording, reason: Error): void {
-    rec.capture.release();
-    rec.final.reject(reason);
-    if (this.recording === rec) this.recording = null;
-    this.client?.post({ type: 'cancel', runId: rec.id });
-  }
 }
 
 // ---------------------------------------------------------------------------
-// Worker client
+// Settings and records
 // ---------------------------------------------------------------------------
 
-type RunMessage = Extract<WorkerToMain, { runId: number }>;
-
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve(value: T): void;
-  reject(error: Error): void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  // Rejections reach whoever awaits; this only keeps unobserved ones out of the console.
-  promise.catch(() => undefined);
-  return { promise, resolve, reject };
-}
-
-class AsrWorkerClient {
-  private readonly worker: Worker;
-  private load: Deferred<LoadResult> | null = null;
-  private readonly counts = new Map<number, Deferred<number>>();
-  private nextCountId = 1;
-  private terminated = false;
-
-  constructor(
-    private readonly onProgress: (progress: LoadProgress) => void,
-    private readonly onRunMessage: (message: RunMessage) => void,
-    private readonly onFailure: (error: Error) => void,
-  ) {
-    this.worker = new Worker(new URL('./asr.worker.ts', import.meta.url), { type: 'module', name: 'parakeet-asr' });
-    this.worker.addEventListener('message', (event: MessageEvent<WorkerToMain>) => this.dispatch(event.data));
-    this.worker.addEventListener('error', (event: ErrorEvent) => {
-      const where = event.filename ? ` (${event.filename}:${event.lineno})` : '';
-      this.fail(
-        new Error(
-          event.message
-            ? `ASR worker error: ${event.message}${where}`
-            : 'The ASR worker failed to start or crashed (no details; see the browser console).',
-        ),
-      );
-    });
-    this.worker.addEventListener('messageerror', () => this.fail(new Error('The ASR worker sent a message that could not be read.')));
-  }
-
-  loadModel(request: LoadRequest): Promise<LoadResult> {
-    this.load?.reject(new Error('Superseded by a newer load request.'));
-    const pending = deferred<LoadResult>();
-    this.load = pending;
-    this.post(request);
-    return pending.promise;
-  }
-
-  post(message: MainToWorker, transfer: Transferable[] = []): void {
-    if (!this.terminated) this.worker.postMessage(message, transfer);
-  }
-
-  requestCount(): Promise<number> {
-    if (this.terminated) return Promise.reject(new Error('The ASR worker is not running.'));
-    const requestId = this.nextCountId++;
-    const pending = deferred<number>();
-    this.counts.set(requestId, pending);
-    this.post({ type: 'count', requestId });
-    return pending.promise;
-  }
-
-  terminate(): void {
-    if (this.terminated) return;
-    this.terminated = true;
-    this.worker.terminate();
-    this.rejectPending(new Error('The ASR worker was terminated.'));
-  }
-
-  private dispatch(message: WorkerToMain): void {
-    switch (message.type) {
-      case 'progress':
-        this.onProgress(message.progress);
-        break;
-      case 'loaded':
-        this.load?.resolve(message.result);
-        this.load = null;
-        break;
-      case 'loadError':
-        this.load?.reject(new Error(message.message));
-        this.load = null;
-        break;
-      case 'count':
-        this.counts.get(message.requestId)?.resolve(message.count);
-        this.counts.delete(message.requestId);
-        break;
-      case 'unexpectedError':
-        this.fail(new Error(message.message));
-        break;
-      default:
-        this.onRunMessage(message);
-    }
-  }
-
-  private fail(error: Error): void {
-    if (this.terminated) return;
-    this.rejectPending(error);
-    this.onFailure(error);
-  }
-
-  private rejectPending(error: Error): void {
-    this.load?.reject(error);
-    this.load = null;
-    for (const pending of this.counts.values()) pending.reject(error);
-    this.counts.clear();
+function checkSources(opts: SessionOptions): void {
+  if (opts.sources.length === 0) throw new Error('Choose at least one audio source.');
+  const kinds = new Set(opts.sources.map((source) => source.kind));
+  if (kinds.size !== opts.sources.length) throw new Error('Each audio source can only be used once per session.');
+  for (const source of opts.sources) {
+    if (source.kind === 'system' && !source.stream) throw new Error('Call audio needs the stream returned by requestSystemAudio().');
   }
 }
 
-// ---------------------------------------------------------------------------
-// Records
-// ---------------------------------------------------------------------------
+function clamp(value: number, min: number, max: number, fallback: number): number {
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
 
 function normalizeSettings(settings: AsrSettings): AsrSettings {
-  // Chunks are whole encoder frames (80 ms) so streaming offsets and timestamps stay exact.
-  const requested = Number.isFinite(settings.chunkMs) ? settings.chunkMs : DEFAULT_ASR_SETTINGS.chunkMs;
-  const chunkMs = Math.max(1, Math.round(requested / ENCODER_FRAME_MS)) * ENCODER_FRAME_MS;
-  const wasmThreads = Number.isFinite(settings.wasmThreads) ? Math.max(0, Math.floor(settings.wasmThreads)) : 0;
-  return { ...settings, chunkMs, wasmThreads };
+  const d = DEFAULT_ASR_SETTINGS;
+  return {
+    ...settings,
+    partialIntervalMs: clamp(settings.partialIntervalMs, 200, 10_000, d.partialIntervalMs),
+    minSilenceMs: clamp(settings.minSilenceMs, 200, 5000, d.minSilenceMs),
+    // Above the 2 s window searched for a cut point.
+    maxSegmentMs: clamp(settings.maxSegmentMs, 4000, 60_000, d.maxSegmentMs),
+    finalPass: settings.finalPass === 'full' ? 'full' : 'segments',
+    wasmThreads: Number.isFinite(settings.wasmThreads) ? Math.max(0, Math.floor(settings.wasmThreads)) : 0,
+  };
+}
+
+function pickSegmentation(settings: AsrSettings): Segmentation {
+  return { partialIntervalMs: settings.partialIntervalMs, minSilenceMs: settings.minSilenceMs, maxSegmentMs: settings.maxSegmentMs };
 }
 
 function loadRecord(opts: AsrLoadOptions, loadStart: number, result: LoadResult, fallbackReason: string | null): ModelLoadRecord {
@@ -526,49 +365,4 @@ function sessionRecord(instance: ModelLoadRecord, at: number): ModelLoadRecord {
     totalColdStartMs: 0,
     warmupMs: null,
   };
-}
-
-function runMetrics(rec: ActiveRecording, mic: MicInfo, final: RunFinal, recordingStop: number, finalTranscriptAt: number): AsrRunMetrics {
-  const computeMs = final.streamingComputeMs + (final.finalPassComputeMs ?? 0);
-  return {
-    micStart: rec.micStart,
-    speechStart: rec.speechStart,
-    firstAudioSubmitted: rec.firstAudioSubmitted,
-    firstPartialAt: rec.firstPartialAt,
-    recordingStop,
-    finalTranscriptAt,
-    partials: rec.partials,
-    voiceToFirstTextMs: span(rec.speechStart, rec.firstPartialAt),
-    submitToFirstTextMs: span(rec.firstAudioSubmitted, rec.firstPartialAt),
-    updateIntervals: intervalStats(rec.partials.map((update) => update.at)),
-    partialUpdateCount: rec.partials.length,
-    finalizationMs: finalTranscriptAt - recordingStop,
-    audioDurationSec: rec.capturedSamples / ASR_SAMPLE_RATE,
-    computeMs,
-    rtf: perAudio(computeMs, rec.capturedSamples),
-    streamingComputeMs: final.streamingComputeMs,
-    // Over the audio the streamer actually processed (chunks dropped for the full pass excluded).
-    streamingRtf: perAudio(final.streamingComputeMs, final.streamedSamples),
-    finalPassComputeMs: final.finalPassComputeMs,
-    finalPassRtf: final.finalPassComputeMs === null ? null : perAudio(final.finalPassComputeMs, final.finalPassSamples),
-    chunksSubmitted: rec.chunksSubmitted,
-    streamingText: final.streamingText,
-    finalText: final.finalText,
-    settings: rec.settings,
-    mic,
-  };
-}
-
-/** Compute milliseconds per millisecond of 16 kHz audio. */
-function perAudio(computeMs: number, samples: number): number | null {
-  return samples > 0 ? computeMs / ((samples / ASR_SAMPLE_RATE) * 1000) : null;
-}
-
-/** UI callbacks must not break capture. */
-function notify(callback: () => void): void {
-  try {
-    callback();
-  } catch (err) {
-    console.error('[asr] recording callback threw', err);
-  }
 }

@@ -1,54 +1,81 @@
-/** Growable FIFO of PCM samples (main thread batching into streaming chunks). */
-export class PcmQueue {
-  private buffer = new Float32Array(32768);
-  private start = 0;
-  private end = 0;
+/** Append-only growable PCM buffer (an open segment, or a whole benchmark recording). */
+export class PcmBuffer {
+  private data: Float32Array<ArrayBuffer>;
+  private size = 0;
+
+  constructor(initialCapacity = 32768) {
+    this.data = new Float32Array(Math.max(1, initialCapacity));
+  }
 
   get length(): number {
-    return this.end - this.start;
+    return this.size;
   }
 
-  push(samples: Float32Array): void {
-    if (this.end + samples.length > this.buffer.length) {
-      const length = this.length;
-      if (length + samples.length > this.buffer.length) {
-        const grown = new Float32Array(Math.max(length + samples.length, this.buffer.length * 2));
-        grown.set(this.buffer.subarray(this.start, this.end));
-        this.buffer = grown;
-      } else {
-        this.buffer.copyWithin(0, this.start, this.end);
-      }
-      this.start = 0;
-      this.end = length;
+  append(samples: Float32Array): void {
+    if (this.size + samples.length > this.data.length) {
+      const grown = new Float32Array(Math.max(this.size + samples.length, this.data.length * 2));
+      grown.set(this.data.subarray(0, this.size));
+      this.data = grown;
     }
-    this.buffer.set(samples, this.end);
-    this.end += samples.length;
+    this.data.set(samples, this.size);
+    this.size += samples.length;
   }
 
-  /** Removes and returns up to `count` samples as a standalone (transferable) array. */
-  take(count: number): Float32Array<ArrayBuffer> {
-    const n = Math.min(count, this.length);
-    const out = this.buffer.slice(this.start, this.start + n);
-    this.start += n;
-    return out;
+  /** View of [start, end); valid until the next append. */
+  view(start = 0, end = this.size): Float32Array<ArrayBuffer> {
+    return this.data.subarray(start, end);
+  }
+
+  /** Standalone (transferable) copy of [start, end). */
+  copy(start = 0, end = this.size): Float32Array<ArrayBuffer> {
+    return this.data.slice(start, end);
   }
 }
 
-export function concatPcm(parts: readonly Float32Array[]): Float32Array<ArrayBuffer> {
-  const out = new Float32Array(parts.reduce((n, part) => n + part.length, 0));
-  let offset = 0;
-  for (const part of parts) {
-    out.set(part, offset);
-    offset += part.length;
-  }
-  return out;
-}
+/** The most recent `capacity` samples of a stream, addressed by absolute sample index (pre-roll before an onset). */
+export class PcmRing {
+  private readonly data: Float32Array;
+  /** Absolute index just past the newest sample. */
+  private end = 0;
+  /** Nothing before this index was written since the last reset. */
+  private validFrom = 0;
 
-/** Copy of `samples` with trailing zeros up to a multiple of `multiple` samples. */
-export function padToMultiple(samples: Float32Array, multiple: number): Float32Array<ArrayBuffer> {
-  const out = new Float32Array(Math.ceil(samples.length / multiple) * multiple);
-  out.set(samples);
-  return out;
+  constructor(readonly capacity: number) {
+    this.data = new Float32Array(capacity);
+  }
+
+  /** Oldest absolute index still available. */
+  get start(): number {
+    return Math.max(this.validFrom, this.end - this.capacity);
+  }
+
+  reset(position: number): void {
+    this.end = position;
+    this.validFrom = position;
+  }
+
+  write(samples: Float32Array): void {
+    const source = samples.length > this.capacity ? samples.subarray(samples.length - this.capacity) : samples;
+    this.end += samples.length - source.length;
+    const at = this.end % this.capacity;
+    const first = Math.min(source.length, this.capacity - at);
+    this.data.set(source.subarray(0, first), at);
+    this.data.set(source.subarray(first), 0);
+    this.end += source.length;
+  }
+
+  /** Appends absolute samples [from, to) to `target`. Throws when that range is no longer (or not yet) held. */
+  copyInto(target: PcmBuffer, from: number, to: number): void {
+    if (from < this.start || to > this.end || from > to) {
+      throw new RangeError(`PcmRing holds [${this.start}, ${this.end}), not [${from}, ${to})`);
+    }
+    for (let at = from; at < to; ) {
+      const offset = at % this.capacity;
+      const n = Math.min(to - at, this.capacity - offset);
+      target.append(this.data.subarray(offset, offset + n));
+      at += n;
+    }
+  }
 }
 
 export function meanSquare(samples: Float32Array): number {

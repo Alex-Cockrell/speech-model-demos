@@ -1,4 +1,5 @@
 /** Worker-only helper: pre-fetches a Kokoro voice into the cache kokoro-js reads from. */
+import { voiceName } from '../benchmark/settings';
 import { HUGGING_FACE_BASE_URL, KOKORO_MODEL } from '../config';
 
 /** Cache API name kokoro-js 1.2.1 stores voices in (also listed in MODEL_CACHE_NAMES for clearing). */
@@ -29,7 +30,7 @@ export async function prefetchVoice(voice: string): Promise<number> {
   }
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Kokoro voice "${voice}" could not be downloaded (HTTP ${response.status}).`);
+    throw new Error(`The ${voiceName(voice)} voice could not be downloaded (HTTP ${response.status}).`);
   }
   const bytes = await response.arrayBuffer();
   // A failed cache write is not fatal: kokoro-js fetches the voice itself on first use.

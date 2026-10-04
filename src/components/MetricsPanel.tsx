@@ -1,5 +1,6 @@
 'use client';
 
+import { voiceName } from '@/lib/benchmark/settings';
 import { span } from '@/lib/clock';
 import { intervalStats } from '@/lib/stats';
 import type { EndToEndMetrics, IntervalStats, PartialUpdate } from '@/lib/types';
@@ -75,9 +76,9 @@ export function AsrMetricsPanel({ run, className }: { run: RunState | null; clas
   const m = run?.asr ?? null;
   return (
     <Panel
-      title="ASR · Parakeet"
+      title="ASR · Transcription model"
       className={className}
-      subtitle={m ? `${m.settings.chunkMs} ms chunks · ${m.settings.finalPass} final pass` : run ? 'live' : undefined}
+      subtitle={m ? `partials every ${m.settings.partialIntervalMs} ms · ${m.settings.finalPass} final pass` : run ? 'live' : undefined}
     >
       {!run && <p className="muted">Streaming transcription metrics appear here.</p>}
       {run && !m && (
@@ -111,7 +112,7 @@ export function AsrMetricsPanel({ run, className }: { run: RunState | null; clas
           </Kv>
           <Kv
             label="· final-pass RTF"
-            hint={m.finalPassComputeMs == null ? 'no final pass (streaming)' : `${fmtMs(m.finalPassComputeMs)} for the whole utterance`}
+            hint={m.finalPassComputeMs == null ? 'no whole-recording pass (segments)' : `${fmtMs(m.finalPassComputeMs)} for the whole utterance`}
           >
             {fmtRtf(m.finalPassRtf)}
           </Kv>
@@ -129,7 +130,11 @@ export function TtsMetricsPanel({ run, className }: { run: RunState | null; clas
   const errors = run?.errors.filter((e) => e.stage === 'tts') ?? [];
   const t0 = run?.speakCalledAt ?? null;
   return (
-    <Panel title="TTS · Kokoro" className={className} subtitle={m ? `${m.settings.voice} · ${m.settings.split} split` : t0 != null ? 'live' : undefined}>
+    <Panel
+      title="TTS · Voice model"
+      className={className}
+      subtitle={m ? `${voiceName(m.settings.voice)} voice · ${m.settings.split} split` : t0 != null ? 'live' : undefined}
+    >
       <RunErrors errors={errors} />
       {!run && <p className="muted">Streaming synthesis and playback continuity appear here.</p>}
       {run && !m && t0 != null && (

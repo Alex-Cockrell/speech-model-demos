@@ -1,10 +1,18 @@
-# Local Speech Test
+# Local Speech
 
-A proof of concept that answers one question (spec: [idea.md](idea.md)): can the laptops our users actually have run speech recognition and speech synthesis entirely in the browser, fast enough to be useful? The app transcribes the microphone with NVIDIA Parakeet TDT 0.6B v3, reads the exact transcript back with Kokoro 82M, and times every stage: model download and initialization, streaming ASR cadence, time to first TTS audio, playback continuity and end-to-end latency. No inference runs on a server. Network traffic is limited to the app itself, the ONNX Runtime files and the model weights; audio and metrics never leave the machine unless you use **Copy benchmark JSON**.
+A prototype of browser-local speech features for the product (spec and decisions: [idea.md](idea.md)). Everything runs in the browser; no inference runs on a server, and audio never leaves the machine.
+
+- **Meeting transcription:** microphone and/or call audio, speech segmented at pauses with live text, speakers labelled Speaker 1, 2, … (renamable), transcripts autosaved in the browser and exported as Markdown, text, JSON, WebVTT or SRT.
+- **Read aloud:** paste a document or response and hear it with streaming playback, sentence highlighting, pause and seek.
+- **Benchmark:** the original proof of concept. Speak, see the transcript, hear it read back, with every stage timed (model download and initialization, streaming cadence, time to first audio, playback continuity, end-to-end latency) and exportable as JSON.
+
+The UI deliberately shows no model, library or host names. They are documented here and recorded in the benchmark JSON.
 
 ```text
-Microphone → AudioWorklet (16 kHz PCM) → ASR worker: Parakeet (parakeet.js, ONNX Runtime Web, WebGPU or WASM)
-           → transcript → TTS worker: Kokoro (kokoro-js, transformers.js, ONNX Runtime Web) → Web Audio playback
+Microphone / shared call audio → AudioWorklet (16 kHz PCM) → ASR worker: NVIDIA Parakeet TDT 0.6B v3 (parakeet.js)
+  → segments → speaker worker: 3D-Speaker CAM++ embeddings + clustering → transcript
+Text → TTS worker: Kokoro 82M (kokoro-js / transformers.js) → Web Audio playback
+All models run on ONNX Runtime Web (WebGPU or multithreaded WASM).
 ```
 
 ## Quick start
@@ -18,7 +26,31 @@ npm run dev        # http://localhost:3000
 
 - `predev` copies ONNX Runtime's `.wasm`/`.mjs` files into `public/ort/` (`scripts/copy-ort-assets.mjs`; generated and gitignored).
 - The dev server sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (`next.config.ts`), so the page is cross-origin isolated and ONNX Runtime can run multithreaded WASM. Open `http://localhost`, not a LAN IP: isolation and the microphone both need a secure context.
-- **Load models** downloads the weights from Hugging Face the first time (about 730 MiB for WASM, 1.5 GiB for WebGPU, see [Model sizes](#model-sizes)) and keeps them in browser storage.
+- **Load models** downloads the weights from Hugging Face the first time (about 800 MiB for WASM, 1.5 GiB for WebGPU, plus 30 MB for the meeting speaker model; see [Model sizes](#model-sizes)) and keeps them in browser storage.
+
+## Using the app
+
+### Meeting transcription
+
+1. **Load models** (speech recognition + speaker model). If the benchmark already loaded speech recognition, only the speaker model loads.
+2. Choose the sources: **Microphone** for the room or your own voice, **Call audio** for the people on a call. Both can run at once.
+3. **Start meeting**. For call audio, Edge asks what to share:
+   - Teams, Meet or Zoom **in Edge**: pick the call's tab and keep "Also share tab audio" on.
+   - Teams or Zoom **desktop app**: pick *Entire screen* and turn on "Also share system audio".
+   - Only the sound is used; the picture is discarded right away. Edge shows its sharing bar until the meeting stops.
+4. Lines appear when a speaker pauses (about 0.8 s after they stop on a fast laptop), with live text while they talk. Speakers are numbered in order of appearance; click a name to rename it everywhere, merge two speakers, move a single line, or **Re-identify speakers** (optionally with the number of people) once more audio is in. Lines with under a second of speech stay unlabelled until re-identified.
+5. On laptop speakers the microphone also hears the call. Those duplicate lines are detected and hidden (toggle to show them); headphones avoid it altogether.
+6. Transcripts autosave every 10 s and on Stop to IndexedDB (`speech-poc-transcripts`). **Clear model caches** never deletes them. After a crash or reload, an unfinished meeting shows up as *Interrupted*. Export from the meeting or the saved list.
+
+The live bar shows the real-time factor and a backlog of speech waiting to be transcribed; a warning appears if the laptop cannot keep up (WebGPU, or a single source, helps).
+
+### Read aloud
+
+Paste text or open a `.txt`/`.md` file, then **Play**. Markdown is cleaned up for listening: links are read as their text, list items and table rows become sentences, and code blocks are announced instead of read. Generation stays at most about 30 s ahead of playback; stalls (generation slower than playback) are counted and explained. **Download audio (WAV)** saves what has been generated.
+
+### Benchmark
+
+The original spec (sections 1–20 of idea.md): Load models, Record, Stop, and the transcript is read back with every stage timed. See [Test matrix](#test-matrix-spec-17).
 
 ## Production preview
 
@@ -110,6 +142,8 @@ Download per backend with the default ("auto") quantizations, one voice included
 | WebGPU with `shader-f16` | fp16 encoder + int8 decoder: 1.17 GiB | fp32: 311 MiB | ≈ 1.5 GiB |
 | WebGPU without `shader-f16` | fp32 encoder (`.onnx` + `.onnx.data`) + int8 decoder: 2.32 GiB | fp32: 311 MiB | ≈ 2.6 GiB |
 
+Meeting transcription adds the speaker model: 3D-Speaker CAM++ (VoxCeleb, `csukuangfj/speaker-embedding-models`), 29.6 MB, always on WASM with 1 thread (ONNX Runtime Web's WebGPU backend can't run its pooling; the app also patches an AveragePool padding bug of ORT ≤ 1.24 in memory). Its upstream weights are Apache-2.0, but the re-export repository carries no license tag; confirm before production use.
+
 Add the ONNX Runtime files served by the app (23.8 MiB for Parakeet, 20.6 MiB for Kokoro). The Parakeet decoder always runs on WASM, so it stays int8. The mirror only has the fp32 encoder if it was uploaded with `--include-fp32`.
 
 ## Test matrix (spec §17)
@@ -139,9 +173,23 @@ Tag each run with **Test case (spec §17)** so the exported JSON records the row
 
 **Models download again after a restart, or downloads fail for lack of space.** The Environment panel shows storage usage, quota and whether storage is persistent. Expect 0.7 to 2.6 GiB per backend configuration, more when several are cached. Persistent storage (`navigator.storage.persist()`) only protects against eviction under storage pressure. It does not survive policies that clear site data on exit, such as cookies kept for the session only (`DefaultCookiesSetting` = 4), Chrome's `ClearBrowsingDataOnExitList` or Edge's `ClearBrowsingDataOnExit`; check chrome://policy or edge://policy. Incognito and guest profiles have small quotas and are wiped on close.
 
+**Call audio isn't transcribed.** The share was made without audio: share again and keep "Also share tab audio" (tab) or "Also share system audio" (entire screen) switched on. Window sharing only carries audio in recent Edge versions. Stopping the share from Edge's bar ends the call source; the microphone keeps going.
+
+**Everything said on the call appears twice, or speakers multiply.** The microphone hears the call through the laptop speakers. Duplicate lines are hidden automatically; headphones avoid them. If one person still shows up as two speakers, merge them or use Re-identify speakers with the number of people.
+
 **huggingface.co is blocked.** Model downloads fail with network or CORS errors. Use the R2 mirror on a hostname IT can allow-list (when using Hugging Face, its CDN hosts under `hf.co` must be reachable too).
 
 **Mirror CORS errors.** Run `--verify` with the exact app origin and read the edge caching notes above. Every voice in the app's voice picker is mirrored; if the picker gains a voice, add it to `VOICES` in `scripts/mirror-models-to-r2.mjs` and re-run the upload.
+
+## Testing without a microphone
+
+Edge and Chrome can play a WAV file as the microphone and as shared screen audio (headless works, nothing is audible):
+
+```sh
+msedge --use-fake-ui-for-media-stream --use-fake-device-for-media-stream   --use-file-for-fake-audio-capture="C:/path/meeting.wav%noloop"   --auto-select-desktop-capture-source="Entire screen" http://localhost:3000
+```
+
+Use 16-bit PCM WAV files. Sharing a real tab that plays audio doesn't work for automated tests in headless mode: headless browsers render audio to a null sink, so the captured tab audio is silent.
 
 ## Scripts
 

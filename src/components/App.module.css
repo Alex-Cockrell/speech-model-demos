@@ -33,6 +33,31 @@
   gap: 6px;
 }
 
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tab {
+  min-height: 36px;
+  margin-bottom: -1px;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.tab[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+}
+
 .version {
   margin-left: 4px;
   font-family: var(--font-mono);

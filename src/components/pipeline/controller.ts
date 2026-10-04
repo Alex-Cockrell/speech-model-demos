@@ -37,8 +37,11 @@ import {
   afterRun,
   clearBlocker,
   initialModels,
+  isRunActive,
   loadBlocker,
+  MODEL_NAMES,
   recordBlocker,
+  type AppActivity,
   type LoadConfig,
   type ModelState,
   type ModelsState,
@@ -142,10 +145,23 @@ function fallbackEnvironment(error: string): EnvironmentInfo {
 // Controller
 // ---------------------------------------------------------------------------
 
+/** ASR settings that apply per run, without reloading the model. */
+const RUN_ASR_KEYS = ['partialIntervalMs', 'minSilenceMs', 'maxSegmentMs', 'finalPass'] as const;
+
+function pickRunAsrSettings(asr: AsrSettings): Pick<AsrSettings, (typeof RUN_ASR_KEYS)[number]> {
+  return {
+    partialIntervalMs: asr.partialIntervalMs,
+    minSilenceMs: asr.minSilenceMs,
+    maxSegmentMs: asr.maxSegmentMs,
+    finalPass: asr.finalPass,
+  };
+}
+
 export class PipelineController {
   readonly level: LevelStore = createLevelStore();
   private snapshot: PipelineSnapshot;
   private readonly listeners = new Set<() => void>();
+  private readonly cacheClearListeners = new Set<() => void>();
   private asrEngine: AsrEngine | null = null;
   private ttsEngine: TtsEngine | null = null;
   private runCtx: RunContext | null = null;
@@ -170,6 +186,7 @@ export class PipelineController {
       historyError,
       cacheClear: null,
       persistRequest: null,
+      activity: null,
     };
   }
 
@@ -209,6 +226,44 @@ export class PipelineController {
   private tts(): TtsEngine {
     return (this.ttsEngine ??= new TtsEngine());
   }
+
+  // ----- shared with the meeting and read-aloud modes ----------------------
+
+  /** The one Parakeet engine of the page; every mode uses it so the model is loaded once. */
+  readonly getAsrEngine = (): AsrEngine => this.asr();
+
+  /** The one Kokoro engine of the page. */
+  readonly getTtsEngine = (): TtsEngine => this.tts();
+
+  /**
+   * Reserve the microphone / audio output / models for a long-running mode. Returns false (and changes
+   * nothing) while a benchmark run, model load, cache clear or the other mode is in progress.
+   */
+  readonly claimActivity = (activity: AppActivity): boolean => {
+    const s = this.snapshot;
+    if (s.activity === activity) return true;
+    if (s.activity || s.loading || s.clearing || s.startPending || isRunActive(s.run)) return false;
+    this.set({ activity });
+    return true;
+  };
+
+  /**
+   * Engines owned outside this controller (the meeting's speaker model) subscribe here to dispose their
+   * workers before the caches are deleted, so the next load is cold for them too.
+   */
+  readonly onCachesCleared = (listener: () => void): (() => void) => {
+    this.cacheClearListeners.add(listener);
+    return () => {
+      this.cacheClearListeners.delete(listener);
+    };
+  };
+
+  readonly releaseActivity = (activity: AppActivity): void => {
+    if (this.snapshot.activity !== activity) return;
+    this.set({ activity: null });
+    // Per-run ASR settings changed while the meeting ran were deferred.
+    void this.applyAsrRunSettings();
+  };
 
   // ----- lifecycle ---------------------------------------------------------
 
@@ -274,13 +329,13 @@ export class PipelineController {
     const previous = this.snapshot.settings.asr;
     const settings = sanitizeSettings(update(this.snapshot.settings));
     this.set({ settings, settingsError: writeSettings(settings) });
-    if (settings.asr.chunkMs !== previous.chunkMs || settings.asr.finalPass !== previous.finalPass) {
+    if (RUN_ASR_KEYS.some((k) => settings.asr[k] !== previous[k])) {
       void this.applyAsrRunSettings();
     }
   };
 
   /**
-   * chunkMs and finalPass reach the ASR engine only through load(). Re-sending the loaded configuration with
+   * The per-run ASR settings (RUN_ASR_KEYS) reach the ASR engine only through load(). Re-sending the loaded configuration with
    * the new values is an instant session reuse, so they act as per-run settings: no reload, and the card keeps
    * showing how the instance was really loaded.
    */
@@ -290,8 +345,10 @@ export class PipelineController {
     const applied = model.applied;
     const engine = this.asrEngine;
     if (model.phase !== 'ready' || !applied || !engine || !s.environment || s.loading) return;
-    const { chunkMs, finalPass } = s.settings.asr;
-    const settings: AsrSettings = { ...applied.settings, chunkMs, finalPass };
+    // The engine rejects load() while a meeting session or recording runs; releaseActivity() re-applies.
+    if (s.activity || s.startPending || isRunActive(s.run)) return;
+    const runSettings = pickRunAsrSettings(s.settings.asr);
+    const settings: AsrSettings = { ...applied.settings, ...runSettings };
     try {
       const result = await engine.load({ ...applied, settings, environment: s.environment });
       const current = this.snapshot.models.parakeet;
@@ -305,21 +362,28 @@ export class PipelineController {
         });
       } else if (current.applied && current.record === model.record) {
         this.patchModel<AsrSettings>('parakeet', {
-          applied: { ...current.applied, settings: { ...current.applied.settings, chunkMs, finalPass } },
+          applied: { ...current.applied, settings: { ...current.applied.settings, ...runSettings } },
         });
       }
     } catch (e) {
-      this.patchModel('parakeet', { error: `Could not apply chunk size / final pass: ${errorMessage(e)}` });
+      this.patchModel('parakeet', { error: `Could not apply the per-run ASR settings: ${errorMessage(e)}` });
     }
   }
 
   // ----- model loading -----------------------------------------------------
 
-  readonly loadModels = async (): Promise<void> => {
+  /**
+   * Load (or re-use) the given models with the current settings; the meeting and read-aloud modes need one each.
+   * A mode that already holds the activity passes it, so it can claim first and load afterwards without a race.
+   */
+  readonly loadModels = async (
+    keys: readonly ModelKey[] = ['parakeet', 'kokoro'],
+    opts: { activity?: AppActivity } = {},
+  ): Promise<void> => {
     const s = this.snapshot;
     const environment = s.environment;
     const { source } = resolveModelSource(s.settings);
-    if (loadBlocker(s) !== null || !environment || !source) return;
+    if (loadBlocker(s, opts.activity) !== null || !environment || !source) return;
 
     this.set({ loading: true, cacheClear: null });
     const backend = s.settings.backend;
@@ -327,10 +391,14 @@ export class PipelineController {
     const ttsConfig: LoadConfig<TtsSettings> = { backend, source, settings: { ...s.settings.tts } };
 
     // Sequential, so each model's download and initialisation are measured without contention.
-    const asr = this.asr();
-    await this.loadModel('parakeet', asrConfig, asr, (onProgress) => asr.load({ ...asrConfig, environment, onProgress }));
-    const tts = this.tts();
-    await this.loadModel('kokoro', ttsConfig, tts, (onProgress) => tts.load({ ...ttsConfig, environment, onProgress }));
+    if (keys.includes('parakeet')) {
+      const asr = this.asr();
+      await this.loadModel('parakeet', asrConfig, asr, (onProgress) => asr.load({ ...asrConfig, environment, onProgress }));
+    }
+    if (keys.includes('kokoro')) {
+      const tts = this.tts();
+      await this.loadModel('kokoro', ttsConfig, tts, (onProgress) => tts.load({ ...ttsConfig, environment, onProgress }));
+    }
 
     this.set({ loading: false });
     void this.refreshStorage();
@@ -589,8 +657,10 @@ export class PipelineController {
       // Storage and connectivity as they were for this run, not when the page loaded.
       environment: { ...environment, storage: s.storage ?? environment.storage, online: ctx.onlineAtStart },
       settings: { ...ctx.settings, asr: asr?.settings ?? ctx.settings.asr, tts: tts?.settings ?? ctx.settings.tts },
-      parakeet: { load: parakeet.record, runsSinceLoad: parakeet.runsSinceLoad },
-      kokoro: { load: kokoro.record, runsSinceLoad: kokoro.runsSinceLoad },
+      // The load that created the instance (cold/warm/partial), not a later no-op 'session' reload, so the
+      // download and initialization numbers stay in every run's record; runsSinceLoad says how long ago it was.
+      parakeet: { load: parakeet.instanceRecord ?? parakeet.record, runsSinceLoad: parakeet.runsSinceLoad },
+      kokoro: { load: kokoro.instanceRecord ?? kokoro.record, runsSinceLoad: kokoro.runsSinceLoad },
       asr,
       tts,
       accuracy,
@@ -603,8 +673,8 @@ export class PipelineController {
     });
 
     const models: ModelsState = {
-      parakeet: afterRun(parakeet, asr !== null, ctx.asr.isLoaded, 'Parakeet'),
-      kokoro: afterRun(kokoro, tts !== null, ctx.tts.isLoaded, 'Kokoro'),
+      parakeet: afterRun(parakeet, asr !== null, ctx.asr.isLoaded, MODEL_NAMES.parakeet),
+      kokoro: afterRun(kokoro, tts !== null, ctx.tts.isLoaded, MODEL_NAMES.kokoro),
     };
     const history = [record, ...s.history].slice(0, HISTORY_LIMIT);
     this.runCtx = null;
@@ -679,8 +749,8 @@ export class PipelineController {
     const errors: string[] = [];
     // Dispose first so the workers release their Cache API / IndexedDB handles; fresh engines are created on the next load.
     const engines = [
-      ['Parakeet', this.asrEngine],
-      ['Kokoro', this.ttsEngine],
+      [MODEL_NAMES.parakeet, this.asrEngine],
+      [MODEL_NAMES.kokoro, this.ttsEngine],
     ] as const;
     for (const [name, engine] of engines) {
       try {
@@ -691,6 +761,13 @@ export class PipelineController {
     }
     this.asrEngine = null;
     this.ttsEngine = null;
+    for (const listener of this.cacheClearListeners) {
+      try {
+        listener();
+      } catch (e) {
+        errors.push(`Model reset failed: ${errorMessage(e)}`);
+      }
+    }
     this.set({ models: initialModels() });
     let cleared: string[] = [];
     try {

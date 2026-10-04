@@ -1,51 +1,39 @@
 /**
  * ASR worker: parakeet.js on ONNX Runtime Web. One worker loads one model configuration; the engine
  * terminates it and spawns a new one to change backend, quantization, threads or source.
- * Message protocol: ./protocol.ts.
+ * Message protocol: ./protocol.ts. The main thread decides what to transcribe (transcriber.ts); this worker
+ * runs one pass per 'pass' message.
  */
 import * as ort from 'onnxruntime-web';
-import { ParakeetModel, type StatefulStreamingTranscriber } from 'parakeet.js';
+import { ParakeetModel, type TranscribeResult } from 'parakeet.js';
 import { now, setMainTimeOrigin } from '@/lib/clock';
 import { ORT_ASSETS } from '@/lib/config';
 import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@/lib/net/instrument';
-import type { AsrSettings, LoadProgress, ParakeetQuant, WasmRuntimeInfo } from '@/lib/types';
+import type { LoadProgress, ModelSource, ParakeetQuant, WasmRuntimeInfo } from '@/lib/types';
 import { expectedFileList, parakeetFiles, type ParakeetFiles } from './model-files';
 import { canonicalModelUrl, openModelCache, retrieveModelFile, type ByteProgress } from './model-store';
-import { concatPcm } from './pcm';
 import {
   ASR_SAMPLE_RATE,
   describeError,
+  resolveWasmThreads,
   type LoadRequest,
   type LoadResult,
   type MainToWorker,
+  type PassRequest,
+  type PassResult,
+  type PassWord,
   type WorkerToMain,
 } from './protocol';
 
 const PROGRESS_INTERVAL_MS = 100;
 
-interface Run {
-  id: number;
-  streamer: StatefulStreamingTranscriber;
-  /** Every chunk received, for the full-utterance pass. */
-  audio: Float32Array[];
-  /** Chunks waiting for the streaming transcriber. */
-  pending: Float32Array[];
-  draining: Promise<void> | null;
-  text: string;
-  computeMs: number;
-  samples: number;
-  chunks: number;
-  error: string | null;
-  /** No more chunks accepted (finishing or cancelled). */
-  closed: boolean;
-}
-
 let instrumentation: FetchInstrumentation | null = null;
 let loadStarted = false;
 let model: ParakeetModel | null = null;
-let run: Run | null = null;
 /** ORT sessions must not run concurrently, so every inference goes through this queue. */
 let inferenceQueue: Promise<unknown> = Promise.resolve();
+/** The buffer whose mel frames parakeet.js's incremental mel cache currently holds (see melPrefix). */
+let melOwner: { key: string; samples: number } | null = null;
 
 function post(message: WorkerToMain): void {
   self.postMessage(message);
@@ -61,17 +49,8 @@ self.addEventListener('message', (event: MessageEvent<MainToWorker>) => {
     case 'load':
       void handleLoad(message);
       break;
-    case 'start':
-      startRun(message.runId);
-      break;
-    case 'chunk':
-      acceptChunk(message.runId, message.audio);
-      break;
-    case 'finish':
-      void finishRun(message.runId, message.mode, message.tail);
-      break;
-    case 'cancel':
-      if (run?.id === message.runId) closeRun(run);
+    case 'pass':
+      void handlePass(message);
       break;
     case 'count':
       post({ type: 'count', requestId: message.requestId, count: instrumentation?.requestCount ?? 0 });
@@ -106,7 +85,7 @@ async function loadModel(request: LoadRequest, net: FetchInstrumentation): Promi
   const bundled = ort.env.versions.web;
   if (bundled && bundled !== ORT_ASSETS.parakeet.version) {
     throw new Error(
-      `onnxruntime-web ${bundled} is bundled, but the self-hosted runtime files are for ${ORT_ASSETS.parakeet.version} (ORT_ASSETS.parakeet).`,
+      `The bundled inference runtime (${bundled}) does not match the self-hosted runtime files (${ORT_ASSETS.parakeet.version}).`,
     );
   }
   // Must be set before parakeet.js's initOrt(), which otherwise points ORT at jsDelivr. A same-origin
@@ -136,16 +115,19 @@ async function loadModel(request: LoadRequest, net: FetchInstrumentation): Promi
       if (retrieved.fromNetwork) networkFiles++;
       if (retrieved.storageError) {
         store = false;
-        storageNotice(`${file}: ${retrieved.storageError}; it will be downloaded again next time.`, file);
+        storageNotice(`${partLabel(files, file)}: ${retrieved.storageError}; it will be downloaded again next time.`, file);
       }
     } catch (err) {
-      throw new Error(`Downloading ${file} from ${net.resolveUrl(url)} failed: ${describeError(err)}`);
+      throw new Error(
+        `Downloading the ${partLabel(files, file).toLowerCase()} from ${sourceLabel(request.source)} failed: ${describeError(err)}`,
+      );
     }
   }
 
+  const threads = resolveWasmThreads(request.threads, navigator.hardwareConcurrency);
   const initializationStart = now();
   progress({ phase: 'initialize' });
-  const created = await createModel(request, files, blobs);
+  const created = await createModel(request, threads, files, blobs);
   const modelReady = now();
   blobs.clear();
 
@@ -162,8 +144,25 @@ async function loadModel(request: LoadRequest, net: FetchInstrumentation): Promi
     initializationStart,
     modelReady,
     warmupMs,
-    wasm: wasmRuntimeInfo(request.threads, wasmPaths),
+    wasm: wasmRuntimeInfo(threads, wasmPaths),
   };
+}
+
+/** A model file as named in messages that reach the UI (the file names identify the model). */
+function partLabel(files: ParakeetFiles, file: string): string {
+  if (file === files.tokenizer) return 'Vocabulary';
+  if (file === files.decoder) return 'Decoder weights';
+  return file === files.encoderData ? 'Encoder weights (data)' : 'Encoder weights';
+}
+
+/** Where model files come from, as named in messages: a mirror by its host, the default host not by name. */
+function sourceLabel(source: ModelSource): string {
+  if (source.kind !== 'mirror') return 'the public model host';
+  try {
+    return `the mirror (${new URL(source.baseUrl).host})`;
+  } catch {
+    return 'the mirror';
+  }
 }
 
 /** Fails fast, before a 1–2 GB encoder download, when WebGPU cannot work in this worker. */
@@ -177,11 +176,11 @@ async function checkWebGpuAdapter(quant: ParakeetQuant): Promise<void> {
   }
 }
 
-async function createModel(request: LoadRequest, files: ParakeetFiles, blobs: Map<string, Blob>): Promise<ParakeetModel> {
+async function createModel(request: LoadRequest, threads: number, files: ParakeetFiles, blobs: Map<string, Blob>): Promise<ParakeetModel> {
   const urls = new Map<string, string>();
   const urlOf = (file: string): string => {
     const blob = blobs.get(file);
-    if (!blob) throw new Error(`${file} was not retrieved.`);
+    if (!blob) throw new Error(`${partLabel(files, file)}: the file was not retrieved.`);
     const url = URL.createObjectURL(blob);
     urls.set(file, url);
     return url;
@@ -199,7 +198,8 @@ async function createModel(request: LoadRequest, files: ParakeetFiles, blobs: Ma
       // Plain 'webgpu' matches no session branch in parakeet.js 1.4.4 and silently runs on WASM.
       // ('webgpu-strict' creates both sessions in parallel and races ORT's WASM initialisation.)
       backend: request.backend === 'webgpu' ? 'webgpu-hybrid' : 'wasm',
-      cpuThreads: request.threads > 0 ? request.threads : undefined,
+      cpuThreads: threads,
+      // 'js' is also what enables the incremental mel cache (melPrefix).
       preprocessorBackend: 'js',
       verbose: false,
       enableProfiling: false,
@@ -215,7 +215,7 @@ async function createModel(request: LoadRequest, files: ParakeetFiles, blobs: Ma
     const device = Object.getOwnPropertyDescriptor(ort.env.webgpu, 'device')?.value as GPUDevice | undefined;
     if (!device) {
       const dropped = warnings.find((warning) => warning.includes('"webgpu"'));
-      throw new Error(`ONNX Runtime did not start its WebGPU backend, so the encoder would run on WASM${dropped ? ` (${dropped})` : ''}.`);
+      throw new Error(`The runtime did not start its WebGPU backend, so the encoder would run on WASM${dropped ? ` (${dropped})` : ''}.`);
     }
     const adapter = Object.getOwnPropertyDescriptor(ort.env.webgpu, 'adapter')?.value as GPUAdapter | undefined;
     console.info('[asr] Parakeet encoder is running on WebGPU', adapter?.info ?? '');
@@ -236,20 +236,18 @@ function collectWarnings(sink: string[]): () => void {
 }
 
 async function warmUp(created: ParakeetModel): Promise<number> {
-  // ~1 s of very quiet noise: compiles WebGPU shaders / primes WASM kernels before the first real chunk.
+  // ~1 s of very quiet noise: compiles WebGPU shaders / primes WASM kernels before the first real pass.
   const audio = new Float32Array(ASR_SAMPLE_RATE);
   let seed = 0x2545f491;
   for (let i = 0; i < audio.length; i++) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     audio[i] = (seed / 0x100000000 - 0.5) * 2e-3;
   }
-  const { ms } = await infer(() => created.transcribe(audio, ASR_SAMPLE_RATE));
+  const { ms } = await infer(() => created.transcribe(audio, ASR_SAMPLE_RATE, { enableProfiling: false }));
   return ms;
 }
 
-function wasmRuntimeInfo(threads: number, wasmPaths: string): WasmRuntimeInfo {
-  // Same rule as parakeet.js initOrt(): cpuThreads || navigator.hardwareConcurrency || 4.
-  const requestedThreads = threads > 0 ? threads : navigator.hardwareConcurrency || 4;
+function wasmRuntimeInfo(requestedThreads: number, wasmPaths: string): WasmRuntimeInfo {
   // initOrt() and ORT itself lower env.wasm.numThreads to 1 when threads cannot work.
   const effectiveThreads = ort.env.wasm.numThreads ?? 1;
   const unavailable = requestedThreads > 1 && effectiveThreads <= 1;
@@ -266,10 +264,10 @@ function wasmRuntimeInfo(threads: number, wasmPaths: string): WasmRuntimeInfo {
 
 function threadingUnavailableReason(): string {
   if (!self.crossOriginIsolated) {
-    return 'The page is not cross-origin isolated (COOP/COEP headers), so SharedArrayBuffer is unavailable and ONNX Runtime runs single-threaded.';
+    return 'The page is not cross-origin isolated (COOP/COEP headers), so SharedArrayBuffer is unavailable and inference runs single-threaded.';
   }
-  if (typeof SharedArrayBuffer === 'undefined') return 'SharedArrayBuffer is unavailable, so ONNX Runtime runs single-threaded.';
-  return 'ONNX Runtime could not start WebAssembly threads and fell back to a single thread (see the console).';
+  if (typeof SharedArrayBuffer === 'undefined') return 'SharedArrayBuffer is unavailable, so inference runs single-threaded.';
+  return 'The runtime could not start WebAssembly threads and fell back to a single thread (see the console).';
 }
 
 /** Also logged: the UI only shows the latest progress message, and this one matters for warm loads. */
@@ -289,7 +287,7 @@ function downloadProgress(file: string): ByteProgress {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming transcription
+// Inference passes
 // ---------------------------------------------------------------------------
 
 function infer<T>(task: () => Promise<T>): Promise<{ value: T; ms: number }> {
@@ -302,122 +300,74 @@ function infer<T>(task: () => Promise<T>): Promise<{ value: T; ms: number }> {
   return result;
 }
 
-function startRun(runId: number): void {
-  if (run) closeRun(run);
-  if (!model) {
-    post({ type: 'runError', runId, message: 'The ASR model is not loaded in this worker.' });
+async function handlePass(request: PassRequest): Promise<void> {
+  const current = model;
+  if (!current) {
+    post({ type: 'passError', passId: request.passId, message: 'The transcription model is not loaded in this worker.' });
     return;
   }
-  run = {
-    id: runId,
-    // A fresh transcriber per recording: no decoder state or text carries over between runs.
-    streamer: model.createStreamingTranscriber({ returnTimestamps: true, sampleRate: ASR_SAMPLE_RATE }),
-    audio: [],
-    pending: [],
-    draining: null,
-    text: '',
-    computeMs: 0,
-    samples: 0,
-    chunks: 0,
-    error: null,
-    closed: false,
+  try {
+    const { value, ms } = await infer(() => runPass(current, request));
+    post({ type: 'passResult', passId: request.passId, ...value, computeMs: ms });
+  } catch (err) {
+    // The cache may hold frames of a buffer that never finished; start the next buffer from scratch.
+    melOwner = null;
+    current.resetMelCache();
+    post({ type: 'passError', passId: request.passId, message: describeError(err) });
+  }
+}
+
+async function runPass(current: ParakeetModel, request: PassRequest): Promise<Omit<PassResult, 'computeMs'>> {
+  if (request.kind === 'full') {
+    // One transcribe() up to 180 s (as in phase 1); parakeet.js windows longer recordings instead of running
+    // the encoder's attention over the whole thing at once.
+    const result = await current.transcribeLongAudio(request.audio, ASR_SAMPLE_RATE, { enableProfiling: false });
+    return { text: result.text, words: null, melPrefixSamples: 0 };
+  }
+  const final = request.kind === 'final';
+  const { prefixSamples, reused } = melPrefix(current, request.growKey, request.audio.length);
+  const result = await current.transcribe(request.audio, ASR_SAMPLE_RATE, {
+    returnTimestamps: final,
+    returnConfidences: final,
+    // true would console.log/console.table every pass.
+    enableProfiling: false,
+    prefixSamples,
+  });
+  return {
+    text: result.utterance_text,
+    words: final ? result.words.map(passWord) : null,
+    melPrefixSamples: reused ? prefixSamples : 0,
   };
 }
 
-function closeRun(target: Run): void {
-  target.closed = true;
-  target.pending.length = 0;
-  if (run === target) run = null;
-}
-
-function acceptChunk(runId: number, audio: Float32Array): void {
-  const target = run;
-  if (!target || target.id !== runId || target.closed || target.error) return;
-  target.audio.push(audio);
-  target.pending.push(audio);
-  void drain(target);
-}
-
-function drain(target: Run): Promise<void> {
-  target.draining ??= processPending(target).finally(() => {
-    target.draining = null;
-  });
-  return target.draining;
-}
-
-async function processPending(target: Run): Promise<void> {
-  while (target.pending.length > 0 && !target.error && run === target) {
-    const chunk = target.pending.shift()!;
-    try {
-      const { value, ms } = await infer(() => target.streamer.processChunk(chunk));
-      target.computeMs += ms;
-      target.samples += chunk.length;
-      target.chunks += 1;
-      target.text = value.text;
-      if (run === target) post({ type: 'partial', runId: target.id, text: value.text, computeMs: ms });
-    } catch (err) {
-      target.error = `Streaming transcription failed: ${describeError(err)}`;
-      // Once finishing, finishRun reports (a successful full pass supersedes a failed chunk).
-      if (run === target && !target.closed) post({ type: 'runError', runId: target.id, message: target.error });
-    }
+/**
+ * parakeet.js keeps ONE incremental mel cache per model and trusts the caller that the first `prefixSamples`
+ * samples equal the previous incremental call's audio, so the owner of the cache is tracked here: passes of
+ * other segments (or sources) start a fresh cache instead of reusing someone else's frames. Within one buffer the
+ * reuse is exact: IncrementalMelProcessor recomputes every frame whose window reaches past the common prefix,
+ * and its features equal JsPreprocessor.process() bit for bit (checked for growing and cut buffers), so the
+ * output equals a plain transcribe(). Passes without a key take the plain path and leave the cache alone.
+ * parakeet.js's decoder-state `incremental` option is not used: the encoder attends over the whole buffer, so
+ * the prefix's encoder frames change as audio is appended and a cached decoder state would not match.
+ */
+function melPrefix(current: ParakeetModel, key: string | null, samples: number): { prefixSamples: number; reused: boolean } {
+  if (key === null || samples === 0) return { prefixSamples: 0, reused: false };
+  if (melOwner?.key === key) {
+    const prefixSamples = Math.min(melOwner.samples, samples);
+    melOwner = { key, samples };
+    return { prefixSamples, reused: true };
   }
+  current.resetMelCache();
+  melOwner = { key, samples };
+  // With an empty cache this computes every frame and fills the cache.
+  return { prefixSamples: samples, reused: false };
 }
 
-async function finishRun(runId: number, mode: AsrSettings['finalPass'], tail: Float32Array | null): Promise<void> {
-  const target = run;
-  if (!target || target.id !== runId) {
-    post({ type: 'runError', runId, message: 'The ASR worker has no matching recording.' });
-    return;
-  }
-  target.closed = true;
-  try {
-    if (target.error) throw new Error(target.error);
-    if (tail && tail.length > 0) {
-      target.audio.push(tail);
-      if (mode === 'streaming') target.pending.push(tail);
-    }
-
-    let finalText: string;
-    let finalPassComputeMs: number | null = null;
-    let finalPassSamples = 0;
-    let chunksDropped = 0;
-    if (mode === 'full') {
-      // Chunks that have not started yet are superseded by the full pass; one already running
-      // finishes first because both go through the inference queue.
-      chunksDropped = target.pending.length;
-      target.pending.length = 0;
-      const audio = concatPcm(target.audio);
-      finalPassSamples = audio.length;
-      finalText = '';
-      if (audio.length > 0) {
-        const current = model;
-        if (!current) throw new Error('The ASR model is not loaded in this worker.');
-        const { value, ms } = await infer(() => current.transcribe(audio, ASR_SAMPLE_RATE));
-        finalText = value.utterance_text;
-        finalPassComputeMs = ms;
-      }
-      await target.draining;
-    } else {
-      await drain(target);
-      if (target.error) throw new Error(target.error);
-      finalText = target.streamer.finalize().text;
-    }
-
-    post({
-      type: 'final',
-      runId,
-      streamingText: target.text,
-      finalText,
-      streamingComputeMs: target.computeMs,
-      streamedSamples: target.samples,
-      finalPassComputeMs,
-      finalPassSamples,
-      chunksProcessed: target.chunks,
-      chunksDropped,
-    });
-  } catch (err) {
-    post({ type: 'runError', runId, message: describeError(err) });
-  } finally {
-    closeRun(target);
-  }
+function passWord(word: TranscribeResult['words'][number]): PassWord {
+  return {
+    text: word.text,
+    startMs: Math.round(word.start_time * 1000),
+    endMs: Math.round(word.end_time * 1000),
+    confidence: typeof word.confidence === 'number' ? word.confidence : null,
+  };
 }

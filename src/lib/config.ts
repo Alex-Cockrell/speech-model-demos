@@ -40,6 +40,19 @@ export const KOKORO_MODEL = {
   voiceFile: (voice: string) => `voices/${voice}.bin`,
 } as const;
 
+/**
+ * Speaker embeddings for the meeting mode's speaker labels: 3D-Speaker CAM++ trained on VoxCeleb2 (7.2M
+ * parameters, 512-dim embeddings, EER 0.65–0.73 % on VoxCeleb1-O), in the ONNX export sherpa-onnx publishes.
+ * fp32, 29.6 MB. Runs on onnxruntime-web (ORT_ASSETS.parakeet); details in src/lib/speakers/model.ts.
+ */
+export const SPEAKER_MODEL = {
+  displayName: 'CAM++ speaker embeddings (3D-Speaker, VoxCeleb)',
+  upstream: 'iic/speech_campplus_sv_en_voxceleb_16k',
+  repo: 'csukuangfj/speaker-embedding-models',
+  revision: '0743f301363dec56491a490f6d6cbc9d67f9a3bf',
+  files: { model: '3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx' },
+} as const;
+
 /** Self-hosted ONNX Runtime Web assets (copied into public/ort at build time). */
 export const ORT_ASSETS = {
   /** onnxruntime-web used by parakeet.js */
@@ -68,8 +81,10 @@ export function modelFileUrl(source: ModelSource, repo: string, revision: string
 
 export const DEFAULT_ASR_SETTINGS: AsrSettings = {
   encoderQuant: 'auto',
-  chunkMs: 960,
-  finalPass: 'full',
+  partialIntervalMs: 800,
+  minSilenceMs: 600,
+  maxSegmentMs: 20_000,
+  finalPass: 'segments',
   wasmThreads: 0,
 };
 

@@ -21,31 +21,36 @@ export interface AppSettings {
 
 export const BACKEND_CHOICES: readonly BackendChoice[] = ['auto', 'webgpu', 'wasm'];
 export const ENCODER_QUANTS: readonly AsrSettings['encoderQuant'][] = ['auto', 'int8', 'fp16', 'fp32'];
-export const FINAL_PASSES: readonly AsrSettings['finalPass'][] = ['full', 'streaming'];
+export const FINAL_PASSES: readonly AsrSettings['finalPass'][] = ['segments', 'full'];
 export const KOKORO_DTYPES: readonly TtsSettings['dtype'][] = ['auto', 'q8', 'fp32', 'fp16', 'q4', 'q4f16'];
 export const TTS_SPLITS: readonly TtsSettings['split'][] = ['sentence', 'clause'];
 /** 0 = let ONNX Runtime decide. */
 export const WASM_THREAD_CHOICES: readonly number[] = [0, 1, 2, 4, 8, 16];
-export const CHUNK_MS_RANGE = { min: 480, max: 2000, step: 80 } as const;
+export const PARTIAL_INTERVAL_CHOICES: readonly number[] = [400, 600, 800, 1200, 1600, 2400];
+export const MIN_SILENCE_CHOICES: readonly number[] = [300, 450, 600, 800, 1000, 1500];
+export const MAX_SEGMENT_CHOICES: readonly number[] = [10_000, 15_000, 20_000, 30_000];
 export const SPEED_RANGE = { min: 0.5, max: 2, step: 0.05 } as const;
 const RUN_MODES: readonly RunMode[] = ['free', 'benchmark'];
 const SOURCE_KINDS: readonly ModelSource['kind'][] = ['huggingface', 'mirror'];
 
-export const VOICES: readonly { id: string; label: string }[] = [
-  { id: 'af_heart', label: 'af_heart · US female (default)' },
-  { id: 'af_bella', label: 'af_bella · US female' },
-  { id: 'af_nicole', label: 'af_nicole · US female' },
-  { id: 'am_michael', label: 'am_michael · US male' },
-  { id: 'am_fenrir', label: 'am_fenrir · US male' },
-  { id: 'bf_emma', label: 'bf_emma · UK female' },
-  { id: 'bm_george', label: 'bm_george · UK male' },
-  { id: 'bm_fable', label: 'bm_fable · UK male' },
+/** `id` is the stored setting value (the model's voice id); `name` and `label` are what the UI shows. */
+export const VOICES: readonly { id: string; name: string; label: string }[] = [
+  { id: 'af_heart', name: 'Heart', label: 'Heart · US female (default)' },
+  { id: 'af_bella', name: 'Bella', label: 'Bella · US female' },
+  { id: 'af_nicole', name: 'Nicole', label: 'Nicole · US female' },
+  { id: 'am_michael', name: 'Michael', label: 'Michael · US male' },
+  { id: 'am_fenrir', name: 'Fenrir', label: 'Fenrir · US male' },
+  { id: 'bf_emma', name: 'Emma', label: 'Emma · UK female' },
+  { id: 'bm_george', name: 'George', label: 'George · UK male' },
+  { id: 'bm_fable', name: 'Fable', label: 'Fable · UK male' },
 ];
 
-export function chunkMsOptions(): number[] {
-  const options: number[] = [];
-  for (let ms = CHUNK_MS_RANGE.min; ms <= CHUNK_MS_RANGE.max; ms += CHUNK_MS_RANGE.step) options.push(ms);
-  return options;
+/** Display name for a stored voice id; an id outside VOICES (e.g. from an old record) shows its name part only. */
+export function voiceName(id: string): string {
+  const known = VOICES.find((v) => v.id === id);
+  if (known) return known.name;
+  const name = id.slice(id.indexOf('_') + 1);
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : id;
 }
 
 export function defaultSettings(): AppSettings {
@@ -73,12 +78,6 @@ function oneOf<T>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
-function snapChunkMs(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-  const { min, max, step } = CHUNK_MS_RANGE;
-  return Math.min(max, Math.max(min, Math.round(value / step) * step));
-}
-
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 }
@@ -95,7 +94,9 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     mirrorBaseUrl: typeof raw.mirrorBaseUrl === 'string' ? raw.mirrorBaseUrl.slice(0, 500) : d.mirrorBaseUrl,
     asr: {
       encoderQuant: oneOf(asr.encoderQuant, ENCODER_QUANTS, d.asr.encoderQuant),
-      chunkMs: snapChunkMs(asr.chunkMs, d.asr.chunkMs),
+      partialIntervalMs: oneOf(asr.partialIntervalMs, PARTIAL_INTERVAL_CHOICES, d.asr.partialIntervalMs),
+      minSilenceMs: oneOf(asr.minSilenceMs, MIN_SILENCE_CHOICES, d.asr.minSilenceMs),
+      maxSegmentMs: oneOf(asr.maxSegmentMs, MAX_SEGMENT_CHOICES, d.asr.maxSegmentMs),
       finalPass: oneOf(asr.finalPass, FINAL_PASSES, d.asr.finalPass),
       wasmThreads: oneOf(asr.wasmThreads, WASM_THREAD_CHOICES, d.asr.wasmThreads),
     },

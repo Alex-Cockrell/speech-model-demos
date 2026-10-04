@@ -4,6 +4,7 @@
  */
 import { now } from '../clock';
 import type { TtsChunkRecord, TtsRunMetrics } from '../types';
+import { applySpeechLoudness, speechOutput } from './output';
 
 /**
  * Lead used when a chunk has to start "now" (the first chunk, or after the queue drained). start() takes effect
@@ -46,7 +47,7 @@ export class PlaybackQueue {
   constructor(ctx: AudioContext) {
     this.ctx = ctx;
     this.output = ctx.createGain();
-    this.output.connect(ctx.destination);
+    this.output.connect(speechOutput(ctx));
   }
 
   /** Chunks with audio scheduled so far. */
@@ -92,6 +93,7 @@ export class PlaybackQueue {
       gapMs: hasPrevious ? (when - this.queueEnd) * 1000 : 0,
     };
 
+    applySpeechLoudness(chunk.samples, chunk.sampleRate);
     const buffer = ctx.createBuffer(1, chunk.samples.length, chunk.sampleRate);
     buffer.getChannelData(0).set(chunk.samples);
     const source = ctx.createBufferSource();

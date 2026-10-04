@@ -27,3 +27,16 @@ export function splitterFor(text: string, mode: TtsSettings['split']): TextSplit
   splitter.close();
   return splitter;
 }
+
+/**
+ * An already-closed TextSplitterStream that yields `text` as exactly one utterance (read aloud plans its own
+ * pieces, see pieces.ts). push() would run kokoro-js's sentence detection on the text again; the `sentences`
+ * getter returns the splitter's internal queue, so the piece is queued as is. Closing it is still required:
+ * stream() iterates the splitter until it is closed (the stream(string) bug described above).
+ */
+export function singlePieceSplitter(text: string): TextSplitterStream {
+  const splitter = new TextSplitterStream();
+  splitter.sentences.push(text);
+  splitter.close();
+  return splitter;
+}

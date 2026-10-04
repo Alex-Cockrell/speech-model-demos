@@ -4,6 +4,7 @@ import { memo } from 'react';
 import type { EnvironmentInfo, ModelLoadRecord, StorageInfo } from '@/lib/types';
 import { BACKEND_LABEL, DASH, fmtBool, fmtBytes, fmtInt, fmtMs } from './format';
 import { wasmCrippled } from './pipeline/selectors';
+import { MODEL_NAMES } from './pipeline/state';
 import { Chip, Kv, KvList, Notice, Panel } from './ui';
 import styles from './panels.module.css';
 
@@ -66,7 +67,7 @@ export const EnvironmentPanel = memo(function EnvironmentPanel({ environment: en
       )}
       {env && !env.crossOriginIsolated && (
         <Notice tone="warn" title="Not cross-origin isolated">
-          SharedArrayBuffer is unavailable, so ONNX Runtime WASM can only run single-threaded (spec §16). Serve the page
+          SharedArrayBuffer is unavailable, so WASM inference can only run single-threaded (spec §16). Serve the page
           with <code>Cross-Origin-Opener-Policy: same-origin</code> and <code>Cross-Origin-Embedder-Policy: require-corp</code>.
         </Notice>
       )}
@@ -99,10 +100,10 @@ export const EnvironmentPanel = memo(function EnvironmentPanel({ environment: en
               {fmtBytes(webgpu.limits.maxStorageBufferBindingSize)}
             </Kv>
           )}
-          <Kv label="Backend · Parakeet" hint={parakeet?.fallbackReason ?? undefined}>
+          <Kv label={`Backend · ${MODEL_NAMES.parakeet.toLowerCase()}`} hint={parakeet?.fallbackReason ?? undefined}>
             {resolvedBackend(parakeet)}
           </Kv>
-          <Kv label="Backend · Kokoro" hint={kokoro?.fallbackReason ?? undefined}>
+          <Kv label={`Backend · ${MODEL_NAMES.kokoro.toLowerCase()}`} hint={kokoro?.fallbackReason ?? undefined}>
             {resolvedBackend(kokoro)}
           </Kv>
           <Kv label="crossOriginIsolated">

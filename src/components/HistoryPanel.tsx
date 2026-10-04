@@ -55,8 +55,8 @@ export const HistoryPanel = memo(function HistoryPanel({ history, error, onClear
                 <th>Time</th>
                 <th>Label</th>
                 <th>Test</th>
-                <th title="Parakeet · Kokoro">Backend P · K</th>
-                <th title="Parakeet · Kokoro">Load P · K</th>
+                <th title="Transcription model · voice model">Backend T · V</th>
+                <th title="Transcription model · voice model">Load T · V</th>
                 <th className={ui.numCell}>Stop → final text</th>
                 <th className={ui.numCell}>Stop → first speech</th>
                 <th className={ui.numCell}>WER</th>

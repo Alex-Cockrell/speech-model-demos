@@ -1,9 +1,13 @@
 /**
  * Messages between TtsEngine (main thread) and tts.worker.ts.
  *
- * Main → worker: load (exactly once per worker), speak, cancel, requestCount.
+ * Main → worker: load (exactly once per worker), speak, synthesize, cancel, requestCount.
  * Worker → main: progress* → loaded | error during a load; chunk* → done | error per speak run;
- * error with id null for failures not tied to a request (uncaught exception / unhandled rejection).
+ * synthesized | error per synthesize request; error with id null for failures not tied to a request
+ * (uncaught exception / unhandled rejection).
+ *
+ * speak streams a whole text (the benchmark); synthesize generates exactly one piece on demand, so the caller
+ * (read aloud) decides how far generation runs ahead of playback. Both run one at a time, in arrival order.
  *
  * Nothing here imports kokoro-js, so the main thread can import it without bundling the model library.
  */
@@ -42,7 +46,22 @@ export interface SpeakRequest {
   split: TtsSettings['split'];
 }
 
-/** Stop posting chunks for speak run `id`. The inference already in flight still runs to completion. */
+/**
+ * Generate one piece of text as one utterance (no sentence splitting), answered by a SynthesizedEvent. The worker
+ * checks Kokoro's token window and, if the piece would be truncated, splits it and concatenates the audio.
+ */
+export interface SynthesizeRequest {
+  type: 'synthesize';
+  id: number;
+  text: string;
+  voice: string;
+  speed: number;
+}
+
+/**
+ * Stop posting chunks for speak run `id`, or skip synthesize request `id` if it has not started.
+ * The inference already in flight still runs to completion.
+ */
 export interface CancelRequest {
   type: 'cancel';
   id: number;
@@ -53,7 +72,7 @@ export interface RequestCountRequest {
   id: number;
 }
 
-export type TtsWorkerRequest = LoadRequest | SpeakRequest | CancelRequest | RequestCountRequest;
+export type TtsWorkerRequest = LoadRequest | SpeakRequest | SynthesizeRequest | CancelRequest | RequestCountRequest;
 
 /** The part of a ModelLoadRecord measured inside the worker. */
 export interface WorkerLoadResult {
@@ -87,11 +106,33 @@ export interface DoneEvent {
   cancelled: boolean;
 }
 
+export interface SynthesizedEvent {
+  type: 'synthesized';
+  id: number;
+  /** Mono PCM of the whole piece (empty when skipped); its buffer is transferred. */
+  audio: Float32Array<ArrayBuffer>;
+  sampleRate: number;
+  /** When the worker started this request (after any queue wait) and finished it. null when skipped. */
+  generationStart: number | null;
+  generatedAt: number;
+  /** Kokoro inferences used: 1, more when the piece had to be split to fit the token window. */
+  inferences: number;
+  /** Largest phoneme-token count of those inferences (including the two `$`). */
+  maxTokens: number;
+  /** Splits made because the piece exceeded Kokoro's token window. */
+  overflowSplits: number;
+  /** A part could not be split further and was synthesized truncated (its end is missing). */
+  truncated: boolean;
+  /** Cancelled before it started: no audio. A request cancelled while running still returns its audio. */
+  skipped: boolean;
+}
+
 export type TtsWorkerEvent =
   | { type: 'progress'; progress: LoadProgress }
   | { type: 'loaded'; id: number; result: WorkerLoadResult }
   | ChunkEvent
   | DoneEvent
+  | SynthesizedEvent
   | { type: 'requestCount'; id: number; count: number }
   | { type: 'error'; id: number | null; message: string };
 

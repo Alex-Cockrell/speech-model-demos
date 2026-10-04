@@ -2,14 +2,14 @@
 
 import { memo } from 'react';
 import { span } from '@/lib/clock';
-import { KOKORO_MODEL, PARAKEET_MODEL } from '@/lib/config';
 import type { DownloadMetrics, LoadProgress, ModelKey, ModelLoadRecord } from '@/lib/types';
-import type { ModelState, ModelsState } from './pipeline/state';
+import { MODEL_NAMES, type ModelState, type ModelsState } from './pipeline/state';
 import {
   BACKEND_LABEL,
   DASH,
   LOAD_KIND_DESCRIPTION,
   LOAD_KIND_LABEL,
+  fileLabel,
   fmtBytes,
   fmtMs,
   fmtRate,
@@ -43,7 +43,7 @@ export const ModelsPanel = memo(function ModelsPanel({ models, pending, loading,
   const anyPending = pending.parakeet.length + pending.kokoro.length > 0;
   const bothReady = models.parakeet.phase === 'ready' && models.kokoro.phase === 'ready';
   const status = loading
-    ? `Loading ${models.parakeet.phase === 'loading' ? 'Parakeet' : 'Kokoro'}…`
+    ? `Loading the ${(models.parakeet.phase === 'loading' ? MODEL_NAMES.parakeet : MODEL_NAMES.kokoro).toLowerCase()}…`
     : (loadBlocker ?? (anyPending ? 'Settings changed: Load models to apply them.' : bothReady ? 'Both models ready.' : 'Not loaded.'));
   return (
     <Panel
@@ -62,8 +62,8 @@ export const ModelsPanel = memo(function ModelsPanel({ models, pending, loading,
       }
     >
       <div className={styles.modelGrid}>
-        <ModelCard name="Parakeet" displayName={PARAKEET_MODEL.displayName} model={models.parakeet} pending={pending.parakeet} />
-        <ModelCard name="Kokoro" displayName={KOKORO_MODEL.displayName} model={models.kokoro} pending={pending.kokoro} />
+        <ModelCard name={MODEL_NAMES.parakeet} displayName="Speech recognition" model={models.parakeet} pending={pending.parakeet} />
+        <ModelCard name={MODEL_NAMES.kokoro} displayName="Speech synthesis" model={models.kokoro} pending={pending.kokoro} />
       </div>
     </Panel>
   );
@@ -147,8 +147,8 @@ function LoadProgressView({ name, model }: { name: string; model: AnyModelState 
         </div>
       )}
       {progress?.file && (
-        <div className={styles.progressFile} title={progress.file}>
-          {progress.file}
+        <div className={styles.progressFile} title={fileLabel(progress.file)}>
+          {fileLabel(progress.file)}
         </div>
       )}
       {progress?.message && <div className="muted">{progress.message}</div>}
@@ -189,7 +189,7 @@ function LoadRecordView({
       )}
       {wasm.multithreadingUnavailable && (
         <Notice tone="warn" title="Multithreaded WASM unavailable">
-          Requested {threadsLabel(wasm.requestedThreads)} threads, ONNX Runtime is running {wasm.effectiveThreads}.
+          Requested {threadsLabel(wasm.requestedThreads)} threads, the runtime is running {wasm.effectiveThreads}.
           {wasm.reason ? ` ${wasm.reason}` : ''}
         </Notice>
       )}
@@ -217,7 +217,7 @@ function LoadRecordView({
         <Kv label="Total cold start" strong>
           {fmtMs(record.totalColdStartMs)}
         </Kv>
-        <Kv label="Runtime assets" hint={`${d.runtimeFiles.length} ORT file${d.runtimeFiles.length === 1 ? '' : 's'} fetched`}>
+        <Kv label="Runtime assets" hint={`${d.runtimeFiles.length} runtime file${d.runtimeFiles.length === 1 ? '' : 's'} fetched`}>
           {fmtBytes(d.runtimeBytes)}
         </Kv>
         <Kv label="WASM threads" hint={`requested → effective · SIMD ${wasm.simd ? 'on' : 'off'}`}>
@@ -226,21 +226,11 @@ function LoadRecordView({
         <Kv label="Runs since load">{runsSinceLoad}</Kv>
       </KvList>
       <details className={styles.details}>
-        <summary>Files, source and versions</summary>
+        <summary>Files and source</summary>
         <FilesTable download={d} />
         <KvList>
-          <Kv label="Source">
-            {record.source.kind === 'huggingface' ? 'Hugging Face' : 'Mirror'} · {record.source.baseUrl}
-          </Kv>
-          <Kv label="Repository">
-            {record.repo}@{shortSha(record.revision)}
-          </Kv>
-          <Kv label="Versions">
-            {Object.entries(record.versions)
-              .map(([lib, version]) => `${lib} ${version}`)
-              .join(' · ')}
-          </Kv>
-          <Kv label="ORT assets">{wasm.wasmPaths}</Kv>
+          <Kv label="Source">{record.source.kind === 'huggingface' ? 'Public model host' : `Mirror · ${record.source.baseUrl}`}</Kv>
+          <Kv label="Model revision">{shortSha(record.revision)}</Kv>
         </KvList>
       </details>
     </>
@@ -270,7 +260,7 @@ function FilesTable({ download: d }: { download: DownloadMetrics }) {
         <tbody>
           {rows.map(({ file, from, rec }, i) => (
             <tr key={`${from}:${file}:${i}`}>
-              <td className={styles.fileName}>{file}</td>
+              <td className={styles.fileName}>{fileLabel(file)}</td>
               <td>{from}</td>
               <td className={ui.numCell}>{rec ? fmtBytes(rec.bytes) : DASH}</td>
               <td className={ui.numCell}>{rec ? fmtMs(span(rec.requestStart, rec.firstByteAt)) : DASH}</td>

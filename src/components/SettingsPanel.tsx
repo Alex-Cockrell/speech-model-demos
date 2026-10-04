@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useId } from 'react';
-import { PARAKEET_MODEL, modelFileUrl } from '@/lib/config';
+import { modelFileUrl } from '@/lib/config';
 import {
   BACKEND_CHOICES,
   ENCODER_QUANTS,
@@ -11,7 +11,9 @@ import {
   TTS_SPLITS,
   VOICES,
   WASM_THREAD_CHOICES,
-  chunkMsOptions,
+  MAX_SEGMENT_CHOICES,
+  MIN_SILENCE_CHOICES,
+  PARTIAL_INTERVAL_CHOICES,
   resolveModelSource,
   type AppSettings,
 } from '@/lib/benchmark/settings';
@@ -79,7 +81,7 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
   const isolated = env?.crossOriginIsolated ?? false;
   const threadsHint = isolated
     ? `> 1 needs cross-origin isolation (available here). This CPU reports ${env?.hardwareConcurrency ?? '?'} threads.`
-    : 'Not cross-origin isolated: ONNX Runtime will run single-threaded whatever is chosen (spec §16).';
+    : 'Not cross-origin isolated: the models will run single-threaded whatever is chosen (spec §16).';
   const setAsr = (patch: Partial<AsrSettings>) => onChange((x) => ({ ...x, asr: { ...x.asr, ...patch } }));
   const setTts = (patch: Partial<TtsSettings>) => onChange((x) => ({ ...x, tts: { ...x.tts, ...patch } }));
   const testCase = TEST_MATRIX.find((t) => t.id === s.testCase);
@@ -103,7 +105,7 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
                 : s.backend === 'webgpu'
                   ? 'Best case. Fails instead of falling back.'
                   : 'CPU baseline: what machines without usable WebGPU get.'}{' '}
-              WebGPU Parakeet downloads the fp16 encoder (≈1.2 GB) instead of int8 (≈640 MB).
+              On WebGPU the transcription model downloads the fp16 encoder (≈1.2 GB) instead of int8 (≈640 MB).
             </p>
           </fieldset>
 
@@ -113,8 +115,8 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
               label="Model source"
               value={s.sourceKind}
               options={[
-                { value: 'huggingface', label: 'Hugging Face' },
-                { value: 'mirror', label: 'Mirror' },
+                { value: 'huggingface', label: 'Public model host' },
+                { value: 'mirror', label: 'Mirror (custom URL)' },
               ]}
               onChange={(sourceKind) => onChange((x) => ({ ...x, sourceKind }))}
             />
@@ -139,11 +141,15 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
             ) : (
               source && (
                 <p className={styles.hint}>
-                  e.g.{' '}
-                  <code className={styles.breakAll}>
-                    {modelFileUrl(source, PARAKEET_MODEL.repo, `${PARAKEET_MODEL.revision.slice(0, 7)}…`, 'vocab.txt')}
-                  </code>
-                  {source.kind === 'mirror' && ' — the mirror must send CORS headers (the page requires COEP).'}
+                  {source.kind === 'mirror' ? (
+                    <>
+                      Files are read from{' '}
+                      <code className={styles.breakAll}>{modelFileUrl(source, '{repo}', '{revision}', '{file}')}</code> — the mirror
+                      must send CORS headers (the page requires COEP).
+                    </>
+                  ) : (
+                    'Pinned model files are downloaded from the public model host, then cached in this browser.'
+                  )}
                 </p>
               )
             )}
@@ -151,7 +157,7 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
         </div>
 
         <fieldset className={styles.fieldset} disabled={locked}>
-          <legend>Parakeet ASR</legend>
+          <legend>Transcription model</legend>
           <SelectField
             label="Encoder quantization"
             value={s.asr.encoderQuant}
@@ -160,21 +166,35 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
             hint={`auto: int8 on WASM; fp16 on WebGPU with shader-f16, else fp32. Expected here: ${expectedEncoderQuant(s, env)}.`}
           />
           <SelectField
-            label="Chunk size"
-            value={s.asr.chunkMs}
-            options={chunkMsOptions().map((ms) => ({ value: ms, label: `${ms} ms` }))}
-            onChange={(chunkMs) => setAsr({ chunkMs })}
-            hint="Per run, no reload. Smaller chunks: more frequent partial updates but more per-chunk overhead (higher streaming RTF)."
+            label="Partial update interval"
+            value={s.asr.partialIntervalMs}
+            options={PARTIAL_INTERVAL_CHOICES.map((ms) => ({ value: ms, label: `${ms} ms` }))}
+            onChange={(partialIntervalMs) => setAsr({ partialIntervalMs })}
+            hint="Per run, no reload. How often the current segment is re-transcribed for live text; skipped while a pass is still running."
+          />
+          <SelectField
+            label="Pause that ends a segment"
+            value={s.asr.minSilenceMs}
+            options={MIN_SILENCE_CHOICES.map((ms) => ({ value: ms, label: `${ms} ms` }))}
+            onChange={(minSilenceMs) => setAsr({ minSilenceMs })}
+            hint="Per run, no reload. Shorter pauses finalize text sooner but can split sentences."
+          />
+          <SelectField
+            label="Max segment length"
+            value={s.asr.maxSegmentMs}
+            options={MAX_SEGMENT_CHOICES.map((ms) => ({ value: ms, label: `${ms / 1000} s` }))}
+            onChange={(maxSegmentMs) => setAsr({ maxSegmentMs })}
+            hint="Per run, no reload. Long monologues are cut at the quietest recent point so each pass stays bounded."
           />
           <SelectField
             label="Final pass"
             value={s.asr.finalPass}
             options={FINAL_PASSES.map((p) => ({
               value: p,
-              label: p === 'full' ? 'full — re-transcribe after Stop' : 'streaming — use streamed text',
+              label: p === 'full' ? 'full — re-transcribe the whole recording after Stop' : 'segments — finalize each segment as it ends',
             }))}
             onChange={(finalPass) => setAsr({ finalPass })}
-            hint="Per run, no reload. full is most accurate but adds its compute to Stop → final text."
+            hint="Per run, no reload. segments keeps Stop → final text short; full adds a whole-recording pass to compare accuracy."
           />
           <SelectField
             label="WASM threads"
@@ -186,7 +206,7 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
         </fieldset>
 
         <fieldset className={styles.fieldset} disabled={locked}>
-          <legend>Kokoro TTS</legend>
+          <legend>Voice model</legend>
           <SelectField
             label="dtype"
             value={s.tts.dtype}
@@ -217,7 +237,7 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
             value={s.tts.split}
             options={TTS_SPLITS.map((v) => ({
               value: v,
-              label: v === 'sentence' ? 'sentence (kokoro-js default)' : 'clause — also on , ; :',
+              label: v === 'sentence' ? 'sentence (default)' : 'clause — also on , ; :',
             }))}
             onChange={(split) => setTts({ split })}
             hint="clause: smaller chunks, earlier first audio, more chunk boundaries. Per run."

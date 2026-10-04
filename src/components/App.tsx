@@ -1,46 +1,73 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { APP_INFO } from '@/lib/config';
-import { EnvironmentPanel } from './EnvironmentPanel';
-import { HistoryPanel } from './HistoryPanel';
-import { AsrMetricsPanel, EndToEndPanel, TtsMetricsPanel } from './MetricsPanel';
-import { ModelsPanel } from './ModelsPanel';
-import { clearBlocker, isRunActive, loadBlocker, recordBlocker } from './pipeline/state';
-import { pendingChanges, testCaseStatus, wasmCrippled } from './pipeline/selectors';
+import { BenchmarkView } from './BenchmarkView';
+import { MeetingView } from './meeting/MeetingView';
+import { wasmCrippled } from './pipeline/selectors';
+import { ACTIVITY_NAMES } from './pipeline/state';
 import { useSpeechPipeline } from './pipeline/useSpeechPipeline';
-import { RecorderPanel } from './RecorderPanel';
-import { SettingsPanel } from './SettingsPanel';
-import { StoragePanel } from './StoragePanel';
-import { AsrTimelinePanel, TtsTimelinePanel } from './TimelinePanel';
+import { ReadAloudView } from './readaloud/ReadAloudView';
 import { Chip } from './ui';
 import styles from './App.module.css';
 
-/** Single-page benchmark dashboard (spec §13). All orchestration lives in the pipeline controller. */
+type Tab = 'meeting' | 'readaloud' | 'benchmark';
+
+const TABS: readonly { id: Tab; label: string }[] = [
+  { id: 'meeting', label: 'Meeting transcription' },
+  { id: 'readaloud', label: 'Read aloud' },
+  { id: 'benchmark', label: 'Benchmark' },
+];
+
+const TAB_KEY = 'speech-poc:tab:v1';
+
+function readTab(): Tab {
+  try {
+    const value = window.localStorage.getItem(TAB_KEY);
+    return TABS.some((t) => t.id === value) ? (value as Tab) : 'meeting';
+  } catch {
+    return 'meeting';
+  }
+}
+
+/**
+ * App shell. One PipelineController owns the environment, settings and the loaded models for every mode,
+ * so switching tabs never reloads a model. All three views stay mounted (only hidden), so a meeting keeps
+ * transcribing while another tab is open.
+ */
 export default function App() {
   const { snapshot: s, controller: c } = useSpeechPipeline();
-  const pending = useMemo(() => pendingChanges(s.models, s.settings), [s.models, s.settings]);
-  const testCase = useMemo(() => testCaseStatus(s.models, s.settings, s.online), [s.models, s.settings, s.online]);
+  const [tab, setTab] = useState<Tab>(readTab);
   const env = s.environment;
-  const active = isRunActive(s.run);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TAB_KEY, tab);
+    } catch {
+      // Per-viewer convenience only.
+    }
+  }, [tab]);
 
   return (
     <div className={styles.app}>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.title}>Local Speech Test</h1>
-          <p className={styles.tagline}>Microphone → Parakeet ASR → transcript → Kokoro TTS → speaker, with every inference step in this browser.</p>
+          <h1 className={styles.title}>Local Speech</h1>
+          <p className={styles.tagline}>
+            Speech recognition and speech synthesis that run entirely in this browser.
+          </p>
         </div>
         <div className={styles.badges}>
+          {s.activity && <Chip tone="info">Running: {ACTIVITY_NAMES[s.activity]}</Chip>}
           {env &&
             (env.crossOriginIsolated ? <Chip tone="ok">Cross-origin isolated</Chip> : <Chip tone="warn">Not cross-origin isolated</Chip>)}
           {env && (env.webgpu.adapterAvailable ? <Chip tone="ok">WebGPU available</Chip> : <Chip>No WebGPU</Chip>)}
           {env &&
             wasmCrippled(env) &&
             (env.wasm.available ? (
-              <Chip tone="warn" title="See the Environment panel">WASM likely interpreted (JIT off)</Chip>
+              <Chip tone="warn" title="See the Environment panel on the Benchmark tab">WASM likely interpreted (JIT off)</Chip>
             ) : (
-              <Chip tone="err" title="See the Environment panel">WebAssembly disabled</Chip>
+              <Chip tone="err" title="See the Environment panel on the Benchmark tab">WebAssembly disabled</Chip>
             ))}
           {s.online ? <Chip tone="ok">Online</Chip> : <Chip tone="info">Offline</Chip>}
           <span className={styles.version}>
@@ -50,66 +77,32 @@ export default function App() {
         </div>
       </header>
 
-      <main className={styles.grid}>
-        <SettingsPanel
-          className={styles.settings}
-          settings={s.settings}
-          onChange={c.updateSettings}
-          environment={env}
-          locked={s.loading || s.clearing || active}
-          persistError={s.settingsError}
-        />
-        <ModelsPanel
-          className={styles.models}
-          models={s.models}
-          pending={pending}
-          loading={s.loading}
-          loadBlocker={loadBlocker(s)}
-          onLoad={c.loadModels}
-        />
-        <RecorderPanel
-          className={styles.recorder}
-          run={s.run}
-          settings={s.settings}
-          onChange={c.updateSettings}
-          recordBlocker={recordBlocker(s)}
-          level={c.level}
-          testCase={testCase}
-          hasPendingChanges={pending.parakeet.length + pending.kokoro.length > 0}
-          onRecord={c.record}
-          onStop={c.stop}
-          onCancel={c.cancel}
-          onStopPlayback={c.stopPlayback}
-        />
-        <EndToEndPanel className={styles.endToEnd} run={s.run} />
-        <AsrMetricsPanel className={styles.asr} run={s.run} />
-        <TtsMetricsPanel className={styles.tts} run={s.run} />
-        <AsrTimelinePanel className={styles.asrTimeline} run={s.run} />
-        <TtsTimelinePanel className={styles.ttsTimeline} run={s.run} />
-        <HistoryPanel className={styles.history} history={s.history} error={s.historyError} onClear={c.clearHistory} />
-        <EnvironmentPanel
-          className={styles.environment}
-          environment={env}
-          error={s.environmentError}
-          storage={s.storage}
-          online={s.online}
-          parakeet={s.models.parakeet.record}
-          kokoro={s.models.kokoro.record}
-        />
-        <StoragePanel
-          className={styles.storage}
-          storage={s.storage}
-          storageError={s.storageError}
-          online={s.online}
-          clearing={s.clearing}
-          clearBlocker={clearBlocker(s)}
-          cacheClear={s.cacheClear}
-          persistRequest={s.persistRequest}
-          onClearCaches={c.clearCaches}
-          onRequestPersistence={c.requestPersistence}
-          onRefresh={c.refreshStorage}
-        />
-      </main>
+      <nav className={styles.tabs} role="tablist" aria-label="Mode">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`panel-${t.id}`}
+            className={styles.tab}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <section id="panel-meeting" role="tabpanel" aria-labelledby="tab-meeting" hidden={tab !== 'meeting'}>
+        <MeetingView snapshot={s} controller={c} />
+      </section>
+      <section id="panel-readaloud" role="tabpanel" aria-labelledby="tab-readaloud" hidden={tab !== 'readaloud'}>
+        <ReadAloudView snapshot={s} controller={c} />
+      </section>
+      <section id="panel-benchmark" role="tabpanel" aria-labelledby="tab-benchmark" hidden={tab !== 'benchmark'}>
+        <BenchmarkView snapshot={s} controller={c} />
+      </section>
     </div>
   );
 }

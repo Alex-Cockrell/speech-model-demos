@@ -122,9 +122,20 @@ export interface PipelineSnapshot {
   historyError: string | null;
   cacheClear: CacheClearResult | null;
   persistRequest: PersistRequestResult | null;
+  /**
+   * A meeting session or read-aloud playback in progress (claimed through PipelineController.claimActivity).
+   * The microphone, audio output and models are shared between modes, so only one mode runs at a time.
+   */
+  activity: AppActivity | null;
 }
 
-export const MODEL_NAMES: Record<ModelKey, string> = { parakeet: 'Parakeet', kokoro: 'Kokoro' };
+/** Long-running work outside the benchmark run itself. */
+export type AppActivity = 'meeting' | 'readaloud';
+
+export const ACTIVITY_NAMES: Record<AppActivity, string> = { meeting: 'the meeting transcription', readaloud: 'read-aloud playback' };
+
+/** User-facing model names: the UI never names the underlying models or libraries. */
+export const MODEL_NAMES: Record<ModelKey, string> = { parakeet: 'Transcription model', kokoro: 'Voice model' };
 
 const ACTIVE_PHASES: ReadonlySet<RunPhase> = new Set<RunPhase>(['starting', 'recording', 'finalizing', 'speaking']);
 
@@ -132,11 +143,13 @@ export function isRunActive(run: RunState | null): boolean {
   return run != null && ACTIVE_PHASES.has(run.phase);
 }
 
-export function loadBlocker(s: PipelineSnapshot): string | null {
+/** `holder`: the mode asking, which may load models while it holds the activity (e.g. claim, then load, then play). */
+export function loadBlocker(s: PipelineSnapshot, holder?: AppActivity): string | null {
   if (!s.environment) return 'Detecting the environment…';
   if (s.loading) return 'Loading…';
   if (s.clearing) return 'Clearing model caches…';
   if (s.startPending || isRunActive(s.run)) return 'Wait for the current run to finish.';
+  if (s.activity && s.activity !== holder) return `Stop ${ACTIVITY_NAMES[s.activity]} first.`;
   return resolveModelSource(s.settings).error;
 }
 
@@ -146,8 +159,9 @@ export function recordBlocker(s: PipelineSnapshot): string | null {
   if (s.clearing) return 'Clearing model caches…';
   if (s.startPending) return 'The microphone is still starting…';
   if (isRunActive(s.run)) return 'A run is in progress.';
+  if (s.activity) return `Stop ${ACTIVITY_NAMES[s.activity]} first.`;
   const missing = (['parakeet', 'kokoro'] as const).filter((k) => s.models[k].phase !== 'ready');
-  if (missing.length > 0) return `Load ${missing.map((k) => MODEL_NAMES[k]).join(' and ')} first.`;
+  if (missing.length > 0) return `Load the ${missing.map((k) => MODEL_NAMES[k].toLowerCase()).join(' and ')} first.`;
   return null;
 }
 
@@ -155,6 +169,7 @@ export function clearBlocker(s: PipelineSnapshot): string | null {
   if (s.loading) return 'Wait for loading to finish.';
   if (s.clearing) return 'Clearing…';
   if (s.startPending || isRunActive(s.run)) return 'Wait for the current run to finish.';
+  if (s.activity) return `Stop ${ACTIVITY_NAMES[s.activity]} first.`;
   return null;
 }
 
@@ -179,7 +194,7 @@ export function initialModels(): ModelsState {
 /** Count a completed run, and notice an engine that lost its model mid-session (e.g. its worker crashed). */
 export function afterRun<S>(model: ModelState<S>, used: boolean, stillLoaded: boolean, name: string): ModelState<S> {
   if (model.phase === 'ready' && !stillLoaded) {
-    return { ...model, phase: 'error', applied: null, error: `${name} is no longer loaded (its worker stopped). Load models again.` };
+    return { ...model, phase: 'error', applied: null, error: `The ${name.toLowerCase()} is no longer loaded (its worker stopped). Load models again.` };
   }
   return used ? { ...model, runsSinceLoad: model.runsSinceLoad + 1 } : model;
 }

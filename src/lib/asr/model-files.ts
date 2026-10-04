@@ -39,7 +39,7 @@ export function resolveEncoderQuant(
   if (setting === 'auto') return environment.webgpu.shaderF16 ? 'fp16' : 'fp32';
   if (setting === 'int8') {
     throw new Error(
-      'The int8 Parakeet encoder cannot run on WebGPU (ONNX Runtime Web has no WebGPU kernels for it). ' +
+      'The int8 encoder cannot run on WebGPU (the runtime has no WebGPU kernels for it). ' +
         'Use fp16/fp32 on WebGPU, or int8 on WASM.',
     );
   }

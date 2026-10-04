@@ -708,3 +708,67 @@ The initial experiment should answer:
 > **Can a user's browser independently download, initialize and continuously operate our speech models quickly enough to provide a useful voice experience without sending raw audio off-device?**
 
 If yes, the next project can determine how the same browser-local speech layer should plug into a chat interface.
+
+---
+
+# 21. Phase 2 Scope
+
+Added after the first build. The prototype now also covers the two features intended for the product. The benchmark (sections 1–20) stays as the measurement tool.
+
+## Meeting Transcription
+
+- Sources: microphone, call audio (a tab, window or the whole screen shared with audio), or both.
+- Speech is cut into segments at pauses. Each segment shows live text while it is spoken and gets its final text when it ends.
+- A local speaker-embedding model labels speakers Speaker 1, 2, … per source. Labels can be renamed, merged and re-identified.
+- When the microphone also hears the call through speakers, duplicate "echo" lines are detected and hidden.
+- Transcripts are autosaved in the browser during the meeting and export as Markdown, text, JSON, WebVTT or SRT.
+- Live indicators show whether the machine keeps up: real-time factor and untranscribed backlog.
+
+## Read Aloud
+
+- Paste a document or response, or open a .txt/.md file. Kokoro reads it with streaming playback, sentence highlighting, pause/resume and seeking.
+- Generation read-ahead is bounded. Stalls are measured and shown.
+
+---
+
+# 22. Implementation Decisions
+
+| Decision | Reason |
+| --- | --- |
+| Models from Hugging Face by default; Cloudflare R2 mirror optional (one setting, mirror script, CORS file) | Hugging Face serves CORS and needs no setup. R2 is the fallback if the managed network blocks huggingface.co. Revisions are pinned to commit SHAs, so both serve identical bytes. |
+| ONNX Runtime WASM files served from the app's own origin | No dependency on a public CDN. The files are 20.6 and 23.8 MiB, under Cloudflare's 25 MiB per-file limit. |
+| Parakeet: int8 encoder on WASM (≈640 MB), fp16 on WebGPU (≈1.2 GB) | int8 cannot run on WebGPU; fp32 would be 2.4 GB. |
+| Kokoro: fp16 on WASM with up to 8 threads, fp32 on WebGPU | On WASM, q8 generates at ≈1.0× real time because its int8 path is slow; fp16 runs at ≈0.45× with half of fp32's download. |
+| ASR streaming: segments at pauses, re-transcribed from the segment start for live text, one final pass per segment | parakeet.js's contiguous-chunk streamer produced unusable partials, because each chunk had no context. |
+| Model files bypass the HTTP cache and persist in Cache Storage | After "Clear model caches", a cold load is a real download, and gigabytes are not stored twice. |
+| WASM speed probe at startup | Edge Enhanced Security Mode turns off the JIT. WASM inference would then look hopeless for reasons unrelated to the hardware. |
+| Inline page icon | Browser-initiated favicon requests were counted as network traffic during runs. |
+
+# 23. Findings So Far
+
+All on the development machine (Ryzen 9 7900X3D, 24 threads, RTX 4070 SUPER, Chrome/Edge 154). Managed laptops will be slower; rerun the benchmark there.
+
+## Automated tests, version 2 (production build, Edge, synthetic speech as fake microphone / shared audio)
+
+| Metric | WASM | WebGPU |
+| --- | --- | --- |
+| Parakeet cold download | 670 MB in 7.7 s | 1.24 GB in 23 s |
+| First live text after speech starts | 0.36 s | 0.58–0.95 s (first GPU pass of a recording is slower) |
+| End of speech → final text (segment closes after a 600 ms pause) | ≈0.8 s | ≈0.8 s |
+| Stop → final text (last segment already final) | ≈5 ms | ≈6 ms |
+| Kokoro time to first audio | 1.1–1.3 s (fp16) | 350–560 ms (fp32) |
+| Kokoro generation speed | 0.39–0.45× real time | 0.06–0.17× real time |
+| Stop → first speech | 1.2 s (18 s passage) | 0.64 s (7 s clip) |
+| Word error rate, benchmark phrases | 0 | 0 |
+
+Meeting mode, 57 s synthetic meeting with four voices and nine turns: 9 lines, word error rate 0, all 9 lines attributed to the right speaker. Results were the same from the microphone, from shared screen audio, and from both at once; with both, the 9 duplicate microphone lines were detected as echo and hidden.
+
+Read aloud (WebGPU): first audio 223 ms after the first piece was generated in 147 ms; generation 0.05× real time; no stalls.
+
+## Real-world tests by the product owner, version 1 (deployed site, Chrome 154, USB microphone, noisy room)
+
+- 60 s of naturally read prose on WebGPU: word error rate 5.3% (6 errors in 114 words, e.g. "Kokoro download" heard as "coro correct"). Stop → final text 625 ms, Stop → first speech 1.17 s, time to first audio 454 ms, no underruns.
+- Harvard passage on Force WASM: word error rate 0. Its speed numbers were inflated by automated tests running on the same machine at the same time (final pass 0.30× real time instead of ≈0.06×).
+- Version 1's live partial text was unusable in both runs ("Well. . . . . . Excellent. or two. es are set up."); version 2 replaced the chunk streamer, see above.
+
+Every run had 0 network requests between Record and the end of playback, including runs with the browser offline after loading the models.

@@ -25,7 +25,7 @@ function asrTimeline(run: RunState): { rows: AsrRow[]; origin: number; originLab
   const speechStart = m ? m.speechStart : run.speechStartAt;
   const micStart = m?.micStart ?? run.clickedAt;
   const rows: AsrRow[] = [{ at: micStart, kind: 'event', text: 'Record pressed', delta: null }];
-  if (m?.firstAudioSubmitted != null) rows.push({ at: m.firstAudioSubmitted, kind: 'event', text: 'first audio chunk to Parakeet', delta: null });
+  if (m?.firstAudioSubmitted != null) rows.push({ at: m.firstAudioSubmitted, kind: 'event', text: 'first audio chunk to the transcription model', delta: null });
   if (speechStart != null) rows.push({ at: speechStart, kind: 'event', text: 'speech detected', delta: null });
   partials.forEach((p, i) => rows.push({ at: p.at, kind: 'partial', text: p.text, delta: i > 0 ? p.at - partials[i - 1].at : null }));
   if (m) {
@@ -105,7 +105,7 @@ export function TtsTimelinePanel({ run, className }: { run: RunState | null; cla
   return (
     <Panel title="TTS chunk timeline" subtitle={t0 != null ? 'time since TTS start' : undefined} className={className}>
       {t0 == null || chunks.length === 0 ? (
-        <p className="muted">Each Kokoro chunk: when it was generated, when it was scheduled to play, and how much audio was buffered ahead.</p>
+        <p className="muted">Each speech chunk: when it was generated, when it was scheduled to play, and how much audio was buffered ahead.</p>
       ) : (
         <>
           <div className={styles.summary}>

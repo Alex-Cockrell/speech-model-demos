@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { MODEL_CACHE_NAMES, MODEL_IDB_NAMES } from '@/lib/net/cache';
+import { MODEL_CACHE_NAMES, MODEL_IDB_NAMES, modelStoreLabel } from '@/lib/net/cache';
 import type { StorageInfo } from '@/lib/types';
 import type { CacheClearResult, PersistRequestResult } from './pipeline/state';
 import { DASH, fmtBytes, fmtClock } from './format';
@@ -84,8 +84,8 @@ export const StoragePanel = memo(function StoragePanel(p: Props) {
       <details className={styles.details}>
         <summary>Where model files are stored</summary>
         <p className={styles.hint}>
-          Cache Storage: {MODEL_CACHE_NAMES.join(', ')}. IndexedDB: {MODEL_IDB_NAMES.join(', ')}. Clearing does not touch the
-          browser&apos;s HTTP cache.
+          Cache Storage: {MODEL_CACHE_NAMES.map(modelStoreLabel).join(', ')}. IndexedDB:{' '}
+          {MODEL_IDB_NAMES.map(modelStoreLabel).join(', ')}. Clearing does not touch the browser&apos;s HTTP cache.
         </p>
       </details>
     </Panel>
@@ -93,7 +93,7 @@ export const StoragePanel = memo(function StoragePanel(p: Props) {
 });
 
 function CacheClearView({ result }: { result: CacheClearResult }) {
-  const deleted = result.cleared.length > 0 ? `Deleted ${result.cleared.join(', ')}.` : 'No cached model files were found.';
+  const deleted = result.cleared.length > 0 ? `Deleted: ${result.cleared.join(', ')}.` : 'No cached model files were found.';
   return result.errors.length > 0 ? (
     <Notice tone="err" title={`Clearing at ${fmtClock(result.at)} was incomplete`}>
       {result.errors.join(' · ')} {deleted} Both models were unloaded.

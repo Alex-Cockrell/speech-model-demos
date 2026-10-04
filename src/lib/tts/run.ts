@@ -88,7 +88,7 @@ export class SpeakRun {
     if (this.settled) return;
     this.generationCompleteAt = event.generationCompleteAt;
     this.generationDone = true;
-    if (this.queue.scheduledCount === 0) this.fail(new Error('Kokoro produced no audio for this text.'));
+    if (this.queue.scheduledCount === 0) this.fail(new Error('The voice model produced no audio for this text.'));
     else if (this.queue.playingCount === 0) this.complete();
   }
 

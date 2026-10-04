@@ -1,8 +1,10 @@
 /**
  * TTS engine (main-thread facade). OWNER: TTS agent.
  *
- * Text → Web Worker running kokoro-js stream() → Float32 audio chunks (24 kHz) →
- * Web Audio scheduled playback with underrun / buffer tracking.
+ * speak(): text → Web Worker running kokoro-js stream() → Float32 audio chunks (24 kHz) →
+ * Web Audio scheduled playback with underrun / buffer tracking (the benchmark).
+ * synthesize(): one piece of text → one audio buffer, no playback; read aloud (./reader.ts) schedules the
+ * pieces itself so it can bound how far generation runs ahead of playback.
  *
  * Worker protocol: ./protocol.ts. Playback scheduling and continuity definitions: ./playback.ts.
  */
@@ -21,7 +23,13 @@ import type {
   TtsRunMetrics,
   TtsSettings,
 } from '../types';
-import { errorMessage, type TtsWorkerEvent, type TtsWorkerRequest, type WorkerLoadResult } from './protocol';
+import {
+  errorMessage,
+  type SynthesizedEvent,
+  type TtsWorkerEvent,
+  type TtsWorkerRequest,
+  type WorkerLoadResult,
+} from './protocol';
 import { SpeakRun } from './run';
 
 export interface TtsLoadOptions {
@@ -36,6 +44,41 @@ export interface TtsLoadOptions {
 export interface TtsSpeakCallbacks {
   onChunk?: (chunk: TtsChunkRecord) => void;
   onPlaybackStart?: (at: number) => void;
+}
+
+/** Per-request synthesis options; voice and speed may differ from the load-time settings. */
+export interface SynthesisOptions {
+  voice: string;
+  speed: number;
+}
+
+export interface SynthesisResult {
+  /** Mono PCM; empty when the request was skipped. */
+  audio: Float32Array;
+  sampleRate: number;
+  /** now() when the request was posted to the worker. */
+  requestedAt: number;
+  /** When the worker started the request (after waiting for earlier ones) and finished it; start null if skipped. */
+  generationStart: number | null;
+  generatedAt: number;
+  /** Kokoro inferences used (> 1 when the piece exceeded the token window and was split). */
+  inferences: number;
+  /** Largest phoneme-token count of those inferences. */
+  maxTokens: number;
+  overflowSplits: number;
+  /** Part of the text could not be split further and was cut off by Kokoro's 512-token window. */
+  truncated: boolean;
+  /** Cancelled before the worker started it. */
+  skipped: boolean;
+}
+
+/** A synthesize() request in flight. */
+export interface SynthesisJob {
+  readonly id: number;
+  /** Rejects when the worker fails, crashes or is replaced (load, dispose). */
+  readonly result: Promise<SynthesisResult>;
+  /** Skips the request if the worker has not started it; an inference already running completes. */
+  cancel(): void;
 }
 
 /** A busy worker answers between inferences; anything slower than this means it is stuck. */
@@ -123,11 +166,11 @@ export class TtsEngine {
   /** Synthesise with kokoro-js streaming and play chunks as they arrive. Resolves after playback completes. */
   async speak(text: string, settings: TtsSettings, callbacks: TtsSpeakCallbacks = {}): Promise<TtsRunMetrics> {
     if (!text.trim()) throw new Error('Nothing to speak: the text is empty.');
-    if (!this.isLoaded) throw new Error('Kokoro is not loaded; call load() first.');
+    if (!this.isLoaded) throw new Error('The voice model is not loaded; load it first.');
     this.stop();
     const ctx = await this.runningContext();
     const instance = this.instance;
-    if (!this.worker || !instance) throw new Error('Kokoro was unloaded while audio output was being prepared.');
+    if (!this.worker || !instance) throw new Error('The voice model was unloaded while audio output was being prepared.');
     this.stop(); // a concurrent speak() may have started while we awaited the AudioContext
 
     const id = this.nextId++;
@@ -147,6 +190,42 @@ export class TtsEngine {
     } finally {
       if (this.run === run) this.run = null;
     }
+  }
+
+  /**
+   * Generate one piece of text as one utterance, without playing it. Requests run one at a time in the worker,
+   * in order (after a speak() in progress). Read aloud uses this to generate on demand, a bounded distance ahead
+   * of its own playback. The voice need not be the load-time one: kokoro-js fetches a voice it does not have on
+   * first use (which needs the network).
+   */
+  synthesize(text: string, options: SynthesisOptions): SynthesisJob {
+    const id = this.nextId++;
+    const requestedAt = now();
+    const result = this.isLoaded
+      ? this.request<SynthesizedEvent>({ type: 'synthesize', id, text, voice: options.voice, speed: options.speed }).then(
+          (event): SynthesisResult => ({
+            audio: event.audio,
+            sampleRate: event.sampleRate,
+            requestedAt,
+            generationStart: event.generationStart,
+            generatedAt: event.generatedAt,
+            inferences: event.inferences,
+            maxTokens: event.maxTokens,
+            overflowSplits: event.overflowSplits,
+            truncated: event.truncated,
+            skipped: event.skipped,
+          }),
+        )
+      : Promise.reject(new Error('The voice model is not loaded; load it first.'));
+    return { id, result, cancel: () => this.post({ type: 'cancel', id }) };
+  }
+
+  /**
+   * The playback AudioContext, created if needed and resumed. Call unlockAudio() inside the user gesture first;
+   * rejects if the browser keeps audio output blocked.
+   */
+  outputContext(): Promise<AudioContext> {
+    return this.runningContext();
   }
 
   /** Stop generation and playback immediately. The pending speak() rejects with an AbortError. */
@@ -185,7 +264,7 @@ export class TtsEngine {
 
   private async loadFresh(opts: TtsLoadOptions, key: string, loadStart: number): Promise<ModelLoadRecord> {
     const token = ++this.loadToken;
-    this.run?.fail(new Error('TTS run interrupted: the Kokoro model is being reloaded.'));
+    this.run?.fail(new Error('TTS run interrupted: the voice model is being reloaded.'));
     this.run = null;
     this.teardownWorker('Superseded by a newer TtsEngine.load() call.');
     this.instance = null;
@@ -217,7 +296,7 @@ export class TtsEngine {
     } catch (e) {
       const error = e instanceof Error ? e : new Error(errorMessage(e));
       if (token === this.loadToken) {
-        this.teardownWorker(`Kokoro load failed: ${error.message}`);
+        this.teardownWorker(`Loading the voice model failed: ${error.message}`);
         emit({ phase: 'error', message: error.message });
       }
       throw error;
@@ -246,7 +325,7 @@ export class TtsEngine {
       });
     } catch (e) {
       if (token !== this.loadToken) throw e;
-      throw new Error(`Kokoro failed to load on ${device} (${dtype}): ${errorMessage(e)}`);
+      throw new Error(`The voice model failed to load on ${device} (${dtype}): ${errorMessage(e)}`);
     }
     if (token !== this.loadToken) throw new DOMException('Superseded by a newer TtsEngine.load() call.', 'AbortError');
     return { device, dtype, result };
@@ -265,10 +344,10 @@ export class TtsEngine {
     worker.addEventListener('error', (event: ErrorEvent) => {
       if (worker !== this.worker) return;
       this.instance = null;
-      this.teardownWorker(`The Kokoro TTS worker crashed: ${describeWorkerError(event)}`);
+      this.teardownWorker(`The speech synthesis worker crashed: ${describeWorkerError(event)}`);
     });
     worker.addEventListener('messageerror', () => {
-      if (worker === this.worker) this.failAll(new Error('A message from the Kokoro TTS worker could not be decoded.'));
+      if (worker === this.worker) this.failAll(new Error('A message from the speech synthesis worker could not be decoded.'));
     });
     this.worker = worker;
   }
@@ -290,6 +369,9 @@ export class TtsEngine {
       case 'done':
         if (this.run?.id === msg.id) this.run.onDone(msg);
         return;
+      case 'synthesized':
+        this.settlePending(msg.id, { value: msg });
+        return;
       case 'error': {
         const error = new Error(msg.message);
         if (msg.id === null) this.failAll(error);
@@ -306,7 +388,7 @@ export class TtsEngine {
 
   private request<T>(msg: TtsWorkerRequest, timeoutMs?: number): Promise<T> {
     const worker = this.worker;
-    if (!worker) return Promise.reject(new Error('The Kokoro TTS worker is not running.'));
+    if (!worker) return Promise.reject(new Error('The speech synthesis worker is not running.'));
     return new Promise<T>((resolve, reject) => {
       const timer =
         timeoutMs === undefined

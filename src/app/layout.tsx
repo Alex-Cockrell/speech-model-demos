@@ -11,7 +11,7 @@ const ICON =
 
 export const metadata: Metadata = {
   title: 'Local Speech Test',
-  description: 'Browser-local Parakeet ASR → Kokoro TTS proof of concept with benchmark instrumentation.',
+  description: 'Browser-local speech recognition and speech synthesis proof of concept with benchmark instrumentation.',
   icons: { icon: ICON },
 };
 

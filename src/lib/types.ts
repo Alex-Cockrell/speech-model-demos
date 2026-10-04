@@ -17,7 +17,10 @@
 
 export type BackendChoice = 'auto' | 'webgpu' | 'wasm';
 export type ResolvedBackend = 'webgpu' | 'wasm';
+/** The two models of the benchmark pipeline. */
 export type ModelKey = 'parakeet' | 'kokoro';
+/** Every model the app can load: the pipeline models plus the speaker-embedding model used for meeting diarization. */
+export type AnyModelKey = ModelKey | 'speaker';
 
 /** How the model's bytes were obtained for this load (spec §8). */
 export type LoadKind =
@@ -100,7 +103,7 @@ export interface WasmRuntimeInfo {
 }
 
 export interface ModelLoadRecord {
-  model: ModelKey;
+  model: AnyModelKey;
   /** e.g. 'NVIDIA Parakeet TDT 0.6B v3' */
   displayName: string;
   /** Hugging Face repo the files come from (or are mirrored from). */
@@ -133,7 +136,7 @@ export interface ModelLoadRecord {
 }
 
 export interface LoadProgress {
-  model: ModelKey;
+  model: AnyModelKey;
   phase: 'download' | 'initialize' | 'warmup' | 'ready' | 'error';
   file?: string;
   loadedBytes?: number;
@@ -150,13 +153,21 @@ export type ParakeetQuant = 'int8' | 'fp16' | 'fp32';
 export interface AsrSettings {
   /** 'auto' → int8 on WASM; fp16 on WebGPU when the adapter has shader-f16, else fp32. */
   encoderQuant: 'auto' | ParakeetQuant;
-  /** Audio per streaming chunk fed to parakeet.js's StatefulStreamingTranscriber. Multiple of 80 ms. */
-  chunkMs: number;
   /**
-   * 'full'      → after Stop, re-transcribe the whole utterance in one pass and use that as the final text (most accurate).
-   * 'streaming' → flush the tail chunk and use the concatenated streaming text as the final text (fastest).
+   * How often the in-progress segment is re-transcribed (from its start) to refresh the live partial text.
+   * A pass is skipped while the previous one is still running, so slow machines update less often instead of lagging.
    */
-  finalPass: 'full' | 'streaming';
+  partialIntervalMs: number;
+  /** A pause at least this long ends the current segment (VAD-based segmentation). */
+  minSilenceMs: number;
+  /** Segments are cut at the quietest recent point once they reach this length, keeping each pass bounded. */
+  maxSegmentMs: number;
+  /**
+   * 'segments' → each segment gets its final transcription as soon as it ends; on Stop only the last one remains,
+   *              so Stop → final text stays short however long the recording is. The meeting mode always works this way.
+   * 'full'     → benchmark only: after Stop, re-transcribe the whole recording in one pass and use that as the final text.
+   */
+  finalPass: 'segments' | 'full';
   /** ORT WASM threads. 0 = automatic. */
   wasmThreads: number;
 }
@@ -199,17 +210,17 @@ export interface AsrRunMetrics {
   computeMs: number;
   /** computeMs / audio duration. < 1.0 is faster than real time. */
   rtf: number | null;
-  /** Inference time spent on streaming chunks only. */
+  /** Inference time spent while recording and on segment finals (partial passes + per-segment final passes). */
   streamingComputeMs: number;
   /** streamingComputeMs / audio duration. */
   streamingRtf: number | null;
-  /** Inference time of the full-utterance final pass (null when finalPass === 'streaming'). */
+  /** Inference time of the whole-recording final pass (null when finalPass === 'segments'). */
   finalPassComputeMs: number | null;
   /** finalPassComputeMs / audio duration. */
   finalPassRtf: number | null;
-  /** Number of streaming chunks submitted to Parakeet. */
+  /** Inference passes run for this recording (partial re-transcriptions + segment finals). */
   chunksSubmitted: number;
-  /** Concatenated streaming text before any final pass. */
+  /** Concatenated per-segment final texts (the final text in 'segments' mode; compared against the full pass in 'full' mode). */
   streamingText: string;
   /** Exact text handed to TTS. */
   finalText: string;
@@ -429,4 +440,75 @@ export interface BenchmarkRecord {
     onlineAtEnd: boolean;
   };
   errors: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Meeting transcription (phase 2)
+// ---------------------------------------------------------------------------
+
+/** 'mic' = getUserMedia microphone; 'system' = audio captured with getDisplayMedia (call / tab / system audio). */
+export type AudioSourceKind = 'mic' | 'system';
+
+export interface TranscriptWord {
+  text: string;
+  /** ms from session start */
+  startMs: number;
+  endMs: number;
+  confidence: number | null;
+}
+
+export interface TranscriptSegment {
+  id: string;
+  source: AudioSourceKind;
+  /** ms from session start on the audio timeline (comparable across sources). */
+  startMs: number;
+  endMs: number;
+  text: string;
+  words: TranscriptWord[] | null;
+  /** Assigned by speaker clustering; null until assigned or when the segment was too short to identify. */
+  speakerId: string | null;
+  speakerConfidence: number | null;
+}
+
+export interface TranscriptSpeaker {
+  /** Stable within a transcript, e.g. 'mic-1', 'system-2'. Clustering never mixes sources. */
+  id: string;
+  /** Display name: 'Speaker 1' by default, renamed by the user. */
+  name: string;
+  source: AudioSourceKind;
+}
+
+export interface SessionStats {
+  /** Audio captured, per source. */
+  audioMs: Partial<Record<AudioSourceKind, number>>;
+  /** All ASR inference time in the session (partials + finals). */
+  asrComputeMs: number;
+  /** asrComputeMs / total audio across sources. Must stay well below 1 for a meeting to keep up. */
+  rtf: number | null;
+  /** End of a segment's speech → its final text, over all segments. */
+  finalLatency: IntervalStats;
+  /** Worst backlog of untranscribed audio observed during the session. */
+  maxBacklogMs: number;
+  /** Partial passes skipped because inference was busy. */
+  skippedPartials: number;
+  segments: number;
+  speakerComputeMs: number | null;
+}
+
+export interface Transcript {
+  schemaVersion: 1;
+  id: string;
+  title: string;
+  /** ISO timestamps */
+  createdAt: string;
+  updatedAt: string;
+  /** Wall-clock length of the session. */
+  durationMs: number;
+  sources: AudioSourceKind[];
+  speakers: TranscriptSpeaker[];
+  segments: TranscriptSegment[];
+  stats: SessionStats | null;
+  /** Model/backend facts for context when comparing transcripts across machines. */
+  models: { asr: ModelSummary | null; speaker: ModelSummary | null };
+  app: { version: string; commit: string | null };
 }

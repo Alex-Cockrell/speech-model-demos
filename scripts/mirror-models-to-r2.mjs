@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Mirrors the pinned Parakeet and Kokoro model files from Hugging Face into a Cloudflare R2 bucket
+// Mirrors the pinned Parakeet, Kokoro and speaker-embedding model files from Hugging Face into a Cloudflare R2 bucket
 // (spec §15, option B). Each file streams from its pinned Hugging Face URL straight into an R2
 // multipart upload; nothing is staged on disk. Object keys use the Hugging Face layout
 // {repo}/resolve/{revision}/{file}, so the app only swaps the base URL (modelFileUrl in src/lib/config.ts).
@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
-// What the app can load, at the revisions pinned in src/lib/config.ts (PARAKEET_MODEL, KOKORO_MODEL).
+// What the app can load, at the revisions pinned in src/lib/config.ts (PARAKEET_MODEL, KOKORO_MODEL, SPEAKER_MODEL).
 // Keep the two in sync: a revision change here and in config.ts means re-running this script.
 // VOICES must cover the voice picker (VOICES in src/lib/benchmark/settings.ts); 0.5 MB each.
 const VOICES = ['af_heart', 'af_bella', 'af_nicole', 'am_michael', 'am_fenrir', 'bf_emma', 'bm_george', 'bm_fable'];
@@ -34,6 +34,14 @@ const MANIFEST = [
       'onnx/model_fp16.onnx',
       ...VOICES.map((voice) => `voices/${voice}.bin`),
     ],
+    fp32Files: [],
+  },
+  {
+    // Meeting mode speaker labels (CAM++); one 29.6 MB file of a repo that holds many other models.
+    configName: 'SPEAKER_MODEL',
+    repo: 'csukuangfj/speaker-embedding-models',
+    revision: '0743f301363dec56491a490f6d6cbc9d67f9a3bf',
+    files: ['3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx'],
     fp32Files: [],
   },
 ];

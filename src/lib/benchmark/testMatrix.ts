@@ -20,7 +20,7 @@ export const TEST_MATRIX: readonly TestCase[] = [
 const CACHE_LABEL = { cold: 'Cold cache', warm: 'Warm cache' } as const;
 const BACKEND_LABEL: Record<BackendChoice, string> = { auto: 'Auto', webgpu: 'WebGPU', wasm: 'WASM' };
 const NETWORK_LABEL = { online: 'Online', 'offline-after-load': 'Offline after load' } as const;
-const MODEL_LABEL: Record<ModelKey, string> = { parakeet: 'Parakeet', kokoro: 'Kokoro' };
+const MODEL_LABEL: Record<ModelKey, string> = { parakeet: 'Transcription model', kokoro: 'Voice model' };
 const KIND_LABEL: Record<LoadKind, string> = { cold: 'Cold', warm: 'Warm', partial: 'Partial', session: 'Session' };
 
 export function findTestCase(id: string | null): TestCase | null {
