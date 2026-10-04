@@ -772,3 +772,16 @@ Read aloud (WebGPU): first audio 223 ms after the first piece was generated in 1
 - Version 1's live partial text was unusable in both runs ("Well. . . . . . Excellent. or two. es are set up."); version 2 replaced the chunk streamer, see above.
 
 Every run had 0 network requests between Record and the end of playback, including runs with the browser offline after loading the models.
+
+# 24. Open Issues and Next Steps
+
+- **Noise robustness.** Speech segmentation uses an energy-based voice detector. In a loud room (two 3D printers, a fan, echo) it started late (3.9 s to first text) and the live text briefly went blank; clean audio does not show either. A small neural voice detector (Silero VAD, ≈2 MB) is the first fix to try.
+- **Auto-submit (no Stop button).** Segments already close after 600 ms of silence. For a speak-then-respond flow: submit after ≈0.7 s of silence when the text ends with sentence punctuation, otherwise wait up to ≈1.5–2 s. Depends on the voice-detector fix above in noisy rooms.
+- **Speaker labels on calls.** Speaker identification works on clean turn-taking but degrades with crosstalk and quick exchanges: segments are cut at pauses, so overlapping speakers share one label, and call audio is a single mixed stream. Teams knows who speaks from per-participant streams; importing its transcript to fix speakers is planned as 0.2.1 (see below).
+- **WebGPU first text.** The first inference of each recording is slower on WebGPU (first text 0.6–0.9 s vs 0.36 s on WASM). A warm-up pass when recording starts would hide it.
+- **Speaker model licence.** CAM++ weights are Apache-2.0 upstream; the re-export repository used for downloads has no licence tag. Confirm before production.
+- **R2 mirror.** `r2/cors.json` still has a placeholder origin; use the real app origin(s), e.g. https://speechmodeldemos.projects.alex.cockrell.ai.
+- **Offline.** Models persist, but the page itself is not cached for offline start (no service worker). Offline use means: load online, then disconnect.
+- **Small settings.** The voice setting is shared by read aloud and the benchmark (a change marks the benchmark's model as needing a reload). Speech output loudness is one constant (`MAKEUP_GAIN_DB` in `src/lib/tts/output.ts`).
+- **Test harness.** The automated Edge tests used for the findings (fake microphone and fake screen-share audio, see README "Testing without a microphone") live outside the repository.
+- **Deployment.** Cloudflare Git integration auto-deploys `main` to https://speechmodeldemos.projects.alex.cockrell.ai.
