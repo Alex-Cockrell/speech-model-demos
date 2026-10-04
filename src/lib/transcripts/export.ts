@@ -2,7 +2,8 @@
  * Transcript export: Markdown, plain text, JSON, WebVTT and SRT. OWNER: meeting agent.
  *
  * Times are offsets from the start of the meeting. Echo duplicates (microphone lines repeating the call audio)
- * are left out unless includeEcho is set.
+ * are left out unless includeEcho is set. Lines inserted from a Teams transcript (refined copies) are included
+ * and marked unless includeTeamsOnly is false.
  */
 import type { ModelSummary } from '../types';
 import { UNKNOWN_SPEAKER } from './model';
@@ -28,12 +29,15 @@ export const EXPORT_FORMATS: readonly ExportFormatInfo[] = [
 export interface ExportOptions {
   /** Include microphone lines hidden as duplicates of the call audio. Default false. */
   includeEcho?: boolean;
+  /** Include lines that only the Teams transcript has (refined transcripts). Default true. */
+  includeTeamsOnly?: boolean;
   /** Locale and time zone of the date line; default: the browser's. */
   locale?: string;
   timeZone?: string;
 }
 
 const ECHO_NOTE = '(duplicate of call audio)';
+const TEAMS_NOTE = '(from the Teams transcript)';
 
 // ---------------------------------------------------------------------------
 // Time formatting
@@ -109,18 +113,23 @@ interface Line {
   segment: MeetingSegment;
   speaker: string;
   text: string;
-  echo: boolean;
+  /** ECHO_NOTE, TEAMS_NOTE or null. */
+  note: string | null;
 }
 
-function lines(t: MeetingTranscript, includeEcho: boolean): Line[] {
+function included(s: MeetingSegment, options: ExportOptions): boolean {
+  return (options.includeEcho === true || s.echoOf === null) && (options.includeTeamsOnly !== false || s.origin !== 'teams');
+}
+
+function lines(t: MeetingTranscript, options: ExportOptions): Line[] {
   const names = new Map(t.speakers.map((s) => [s.id, s.name]));
   return t.segments
-    .filter((s) => includeEcho || s.echoOf === null)
+    .filter((s) => included(s, options))
     .map((segment) => ({
       segment,
       speaker: oneLine((segment.speakerId !== null ? names.get(segment.speakerId) : undefined) ?? UNKNOWN_SPEAKER),
       text: oneLine(segment.text),
-      echo: segment.echoOf !== null,
+      note: segment.echoOf !== null ? ECHO_NOTE : segment.origin === 'teams' ? TEAMS_NOTE : null,
     }));
 }
 
@@ -141,7 +150,7 @@ export function formatDate(iso: string, options: ExportOptions = {}): string {
 // ---------------------------------------------------------------------------
 
 export function toMarkdown(t: MeetingTranscript, options: ExportOptions = {}): string {
-  const exported = lines(t, options.includeEcho ?? false);
+  const exported = lines(t, options);
   const people = participants(t, exported);
   const out = [
     `# ${escapeMarkdown(oneLine(t.title))}`,
@@ -152,14 +161,14 @@ export function toMarkdown(t: MeetingTranscript, options: ExportOptions = {}): s
     '',
   ];
   for (const l of exported) {
-    const note = l.echo ? ` _${ECHO_NOTE}_` : '';
+    const note = l.note ? ` _${l.note}_` : '';
     out.push(`**${escapeMarkdown(l.speaker)}** (${formatHms(l.segment.startMs)}): ${escapeMarkdown(l.text)}${note}`, '');
   }
   return out.join('\n');
 }
 
 export function toPlainText(t: MeetingTranscript, options: ExportOptions = {}): string {
-  const exported = lines(t, options.includeEcho ?? false);
+  const exported = lines(t, options);
   const people = participants(t, exported);
   const out = [
     oneLine(t.title),
@@ -169,7 +178,7 @@ export function toPlainText(t: MeetingTranscript, options: ExportOptions = {}): 
     '',
   ];
   for (const l of exported) {
-    out.push(`[${formatHms(l.segment.startMs)}] ${l.speaker}: ${l.text}${l.echo ? ` ${ECHO_NOTE}` : ''}`);
+    out.push(`[${formatHms(l.segment.startMs)}] ${l.speaker}: ${l.text}${l.note ? ` ${l.note}` : ''}`);
   }
   return `${out.join('\n')}\n`;
 }
@@ -182,9 +191,12 @@ function exportedModel(m: ModelSummary | null) {
   return m && { backend: m.backend, quantization: m.quantization, loadKind: m.loadKind, runsSinceLoad: m.runsSinceLoad };
 }
 
-/** The Transcript object itself (with the meeting fields), minus echo lines unless asked for. */
+/**
+ * The Transcript object itself (with the meeting fields and, for a refined copy, its refinement summary), minus
+ * echo lines unless asked for (and minus Teams-only lines when asked).
+ */
 export function toJson(t: MeetingTranscript, options: ExportOptions = {}): string {
-  const segments = options.includeEcho ? t.segments : t.segments.filter((s) => s.echoOf === null);
+  const segments = t.segments.filter((s) => included(s, options));
   const models = { asr: exportedModel(t.models.asr), speaker: exportedModel(t.models.speaker) };
   return `${JSON.stringify({ ...t, segments, models }, null, 2)}\n`;
 }
@@ -196,11 +208,11 @@ function cueEnd(segment: MeetingSegment): number {
 
 export function toWebVtt(t: MeetingTranscript, options: ExportOptions = {}): string {
   const out = ['WEBVTT', '', 'NOTE', escapeVtt(`${oneLine(t.title)} · ${formatDate(t.createdAt, options)}`), ''];
-  lines(t, options.includeEcho ?? false).forEach((l, i) => {
+  lines(t, options).forEach((l, i) => {
     out.push(
       String(i + 1),
       `${formatVttTime(l.segment.startMs)} --> ${formatVttTime(cueEnd(l.segment))}`,
-      escapeVtt(`${l.speaker}: ${l.text}${l.echo ? ` ${ECHO_NOTE}` : ''}`),
+      escapeVtt(`${l.speaker}: ${l.text}${l.note ? ` ${l.note}` : ''}`),
       '',
     );
   });
@@ -209,11 +221,11 @@ export function toWebVtt(t: MeetingTranscript, options: ExportOptions = {}): str
 
 export function toSrt(t: MeetingTranscript, options: ExportOptions = {}): string {
   const out: string[] = [];
-  lines(t, options.includeEcho ?? false).forEach((l, i) => {
+  lines(t, options).forEach((l, i) => {
     out.push(
       String(i + 1),
       `${formatSrtTime(l.segment.startMs)} --> ${formatSrtTime(cueEnd(l.segment))}`,
-      escapeSrt(`${l.speaker}: ${l.text}${l.echo ? ` ${ECHO_NOTE}` : ''}`),
+      escapeSrt(`${l.speaker}: ${l.text}${l.note ? ` ${l.note}` : ''}`),
       '',
     );
   });

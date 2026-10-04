@@ -1,6 +1,7 @@
 /**
  * Meeting orchestration: setup (sources, models), the live session (ASR segments → transcript, echo duplicates,
- * speaker assignment, live stats), speaker edits and re-identification, autosave, and the saved transcripts.
+ * speaker assignment, live stats), speaker edits and re-identification, autosave, the saved transcripts, and
+ * refined copies made with a Teams transcript.
  *
  * Like PipelineController: a plain class holding one immutable snapshot, so async flows always read current state.
  * useMeeting subscribes with useSyncExternalStore. Everything external comes in through MeetingDeps (the app
@@ -49,7 +50,9 @@ import {
   type TranscriptDoc,
 } from '@/lib/transcripts/model';
 import { sortSummaries, storageErrorMessage, type TranscriptStore } from '@/lib/transcripts/store';
-import type { MeetingSegment, MeetingTranscript, TranscriptStatus, TranscriptSummary } from '@/lib/transcripts/types';
+import { refineWithTeams, yieldToPage, type RefineProgress } from '@/lib/transcripts/teams/refine';
+import type { ParsedTeamsTranscript } from '@/lib/transcripts/teams/types';
+import type { MeetingSegment, MeetingTranscript, TranscriptRefinement, TranscriptStatus, TranscriptSummary } from '@/lib/transcripts/types';
 import type { AudioSourceKind, ModelKey, ModelLoadRecord, SessionStats } from '@/lib/types';
 import { createLevelStore, type LevelStore } from '../pipeline/levelStore';
 import { createProgressSink } from '../pipeline/progress';
@@ -1352,6 +1355,37 @@ export class MeetingController {
     const stored = await this.deps.store.get(id);
     if (!stored) throw new Error('That transcript no longer exists.');
     return stored.transcript;
+  };
+
+  /**
+   * "Refine with Teams transcript": a new saved transcript with our words and Teams' speaker names and turns
+   * (lib/transcripts/teams/refine.ts). The transcript it starts from is not changed. Not while it is recording.
+   * Rejects with a RefineError (not the same meeting, nothing to match) or a storage error.
+   */
+  readonly refineWithTeams = async (
+    docId: string,
+    teams: ParsedTeamsTranscript,
+    options: { includeTeamsOnly: boolean },
+    onProgress?: (progress: RefineProgress | { phase: 'saving'; fraction: number }) => void,
+  ): Promise<{ id: string; title: string; refinement: TranscriptRefinement }> => {
+    if (this.snapshot.meeting?.doc.transcript.id === docId && isSessionActive(this.snapshot.phase)) {
+      throw new Error('Stop the meeting first.');
+    }
+    const original = await this.loadTranscript(docId);
+    const result = await refineWithTeams(original, teams, {
+      id: newRunId(),
+      includeTeamsOnly: options.includeTeamsOnly,
+      onProgress,
+      pause: yieldToPage,
+    });
+    onProgress?.({ phase: 'saving', fraction: 0 });
+    try {
+      const summary = await this.enqueue(() => this.deps.store.put(result.transcript, 'complete'));
+      this.upsertLibrary(summary);
+    } catch (e) {
+      throw new Error(`The refined transcript could not be saved: ${storageErrorMessage(e)}`);
+    }
+    return { id: result.transcript.id, title: result.transcript.title, refinement: result.refinement };
   };
 
   /** Deletes a saved transcript (the page asks for confirmation first). The running meeting cannot be deleted. */

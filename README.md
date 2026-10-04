@@ -44,6 +44,8 @@ npm run dev        # http://localhost:3000
 5. On laptop speakers the microphone also hears the call. Those duplicate lines are detected and hidden (toggle to show them); headphones avoid it altogether.
 6. Transcripts autosave every 10 s and on Stop to IndexedDB (`speech-poc-transcripts`). **Clear model caches** never deletes them. After a crash or reload, an unfinished meeting shows up as *Interrupted*. Export from the meeting or the saved list.
 
+7. **Refine with Teams transcript** (optional, after the meeting): our words are usually more accurate than Teams', but Teams knows who spoke because it hears each participant separately. Open the meeting (or a saved one), click **Refine with Teams transcript…**, and paste the transcript from Teams (meeting chat → Recap → Transcript, select all and copy) or open/drop its `.docx`, `.vtt` or `.txt` download. The app lines the two up locally (clock offset found automatically), keeps our words and timings, takes Teams' speaker names and turns, splits lines where the speaker changed, and adds lines only Teams heard (marked "from Teams"). The result is saved as a new "(refined)" transcript; the original is kept. Transcription must have been on in Teams; for long meetings prefer the download, since the transcript pane may only copy what it has loaded.
+
 The live bar shows the real-time factor and a backlog of speech waiting to be transcribed; a warning appears if the laptop cannot keep up (WebGPU, or a single source, helps).
 
 ### Read aloud

@@ -12,6 +12,7 @@ import { fmtDateTime, fmtDuration, plural } from './format';
 import { SourceIcon } from './icons';
 import { LiveBar } from './LiveBar';
 import { SOURCE_LABEL, isSessionActive, type DocState, type MeetingNotice, type MeetingSnapshot, type OpenSegment, type SaveState } from './state';
+import { RefinementInfo, TeamsRefine } from './TeamsRefine';
 import { TitleInput } from './TitleInput';
 import { TranscriptList } from './TranscriptList';
 import styles from './Meeting.module.css';
@@ -39,6 +40,9 @@ export function DocPanel({
   const running = isMeeting && isSessionActive(m.phase);
   const live = running ? m.live : null;
   const echoLines = useMemo(() => echoCount(t.segments), [t.segments]);
+  const teamsLines = useMemo(() => t.segments.filter((s) => s.origin === 'teams' && s.echoOf === null).length, [t.segments]);
+  // Refining needs a finished transcript; a refined copy is not refined again (refine the original instead).
+  const canRefine = !running && state.status !== 'recording' && !t.refinement;
   const actions = useMemo(
     () => ({ renameSpeaker: c.renameSpeaker, reassignSegment: c.reassignSegment, editSegmentText: c.editSegmentText }),
     [c],
@@ -96,8 +100,9 @@ export function DocPanel({
         ) : (
           <span />
         )}
-        <ExportControls load={load} echoLines={echoLines} />
+        <ExportControls load={load} echoLines={echoLines} teamsLines={teamsLines} />
       </div>
+      {t.refinement ? <RefinementInfo refinement={t.refinement} /> : canRefine && <TeamsRefine key={t.id} transcript={t} controller={c} />}
       <TranscriptList
         state={state}
         open={live ? live.open : NO_OPEN}

@@ -17,6 +17,56 @@ export interface MeetingSegment extends TranscriptSegment {
   speakerManual: boolean;
   /** Recognized text before the user's first correction; null while the text is untouched. */
   originalText: string | null;
+  /**
+   * 'teams': a line inserted from the Teams transcript where our recording has no words (usually people talking
+   * over each other). Its text and timing are Teams'. Absent on our own lines.
+   */
+  origin?: 'teams';
+  /** Refined lines only: few of the line's words matched the speaker's words in the Teams transcript. */
+  speakerUncertain?: boolean;
+}
+
+/** Input layouts of a Teams transcript (see lib/transcripts/teams/types.ts). */
+export type RefinementInputKind = 'paste' | 'txt' | 'vtt' | 'docx';
+
+/** How a transcript was refined with a Teams transcript (stored on the refined copy; the original is untouched). */
+export interface TranscriptRefinement {
+  source: 'teams';
+  /** The transcript this copy was made from. */
+  fromTranscriptId: string;
+  fromTitle: string;
+  /** The opened file's name; null when the Teams transcript was pasted. */
+  fileName: string | null;
+  input: RefinementInputKind;
+  turns: number;
+  /** Speaker names in the Teams transcript. */
+  speakers: number;
+  /** Teams times are times of day (10:32 AM) rather than offsets from the start of the Teams transcript. */
+  clockTimes: boolean;
+  /** Our time = Teams time + offsetMs (+ drift): where the Teams timeline's 0:00 falls on this recording. */
+  offsetMs: number;
+  /** Clock drift between the two timelines, in ms per hour of meeting (0 when not measurable). */
+  driftMsPerHour: number;
+  /** Passages (word triples found once in each transcript) that agree on the offset, and all such passages. */
+  anchorsUsed: number;
+  anchorsFound: number;
+  /** Share of our words matched to a Teams word (exactly or nearly). */
+  wordsMatched: number;
+  /** Share of our words paired with a Teams word at the same place (matched, or a different word). */
+  wordsAligned: number;
+  /** Our lines split because the speaker changes inside them. */
+  segmentsSplit: number;
+  /** Lines inserted from the Teams transcript (words our recording does not have). */
+  teamsOnlyInserted: number;
+  lowConfidence: number;
+  /** Lines outside the time the Teams transcript covers: they keep their earlier speaker. */
+  outsideTeams: number;
+  /** Corrected lines that were split: spread over the pieces, or (when that was impossible) kept in the first piece. */
+  correctionsSpread: number;
+  correctionsKeptInFirstPiece: number;
+  elapsedMs: number;
+  /** ISO */
+  refinedAt: string;
 }
 
 export interface MeetingSpeaker extends TranscriptSpeaker {
@@ -29,6 +79,8 @@ export interface MeetingTranscript extends Transcript {
   speakers: MeetingSpeaker[];
   /** Ordered by startMs (then source, then id). */
   segments: MeetingSegment[];
+  /** Present on a copy refined with a Teams transcript. */
+  refinement?: TranscriptRefinement;
 }
 
 /**
@@ -55,4 +107,8 @@ export interface TranscriptSummary {
   status: TranscriptStatus;
   /** Date.now() of the last save. A 'recording' entry that stopped being saved belongs to a meeting that was cut off. */
   savedAtMs: number;
+  /** A copy refined with a Teams transcript (absent otherwise). */
+  refined?: boolean;
+  /** Lines inserted from the Teams transcript (the export controls offer to leave them out); absent when none. */
+  teamsLines?: number;
 }

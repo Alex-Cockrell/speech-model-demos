@@ -12,10 +12,22 @@ import ui from '../ui.module.css';
 
 type Status = { kind: 'idle' | 'copied' | 'downloaded' } | { kind: 'error'; message: string };
 
-/** Format, Copy, Download; hidden echo duplicates are left out unless included here. */
-export function ExportControls({ load, echoLines }: { load: () => Promise<MeetingTranscript>; echoLines: number }) {
+/**
+ * Format, Copy, Download; hidden echo duplicates are left out unless included here. Lines inserted from a Teams
+ * transcript (refined copies) are included, marked, unless left out here.
+ */
+export function ExportControls({
+  load,
+  echoLines,
+  teamsLines = 0,
+}: {
+  load: () => Promise<MeetingTranscript>;
+  echoLines: number;
+  teamsLines?: number;
+}) {
   const [format, setFormat] = useState<ExportFormat>('markdown');
   const [includeEcho, setIncludeEcho] = useState(false);
+  const [includeTeamsOnly, setIncludeTeamsOnly] = useState(true);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const formatId = useId();
 
@@ -28,7 +40,7 @@ export function ExportControls({ load, echoLines }: { load: () => Promise<Meetin
   const run = async (action: (t: MeetingTranscript, text: string) => Promise<void> | void, done: Status) => {
     try {
       const transcript = await load();
-      await action(transcript, exportTranscript(transcript, format, { includeEcho }));
+      await action(transcript, exportTranscript(transcript, format, { includeEcho, includeTeamsOnly }));
       setStatus(done);
     } catch (e) {
       setStatus({ kind: 'error', message: errorMessage(e) });
@@ -62,6 +74,12 @@ export function ExportControls({ load, echoLines }: { load: () => Promise<Meetin
         <label className={styles.check} title="Microphone lines that repeat the call audio (hidden in the transcript)">
           <input type="checkbox" checked={includeEcho} onChange={(e) => setIncludeEcho(e.target.checked)} />
           Include {plural(echoLines, 'duplicate line')}
+        </label>
+      )}
+      {teamsLines > 0 && (
+        <label className={styles.check} title="Lines inserted from the Teams transcript where this recording has no words; marked in the export">
+          <input type="checkbox" checked={includeTeamsOnly} onChange={(e) => setIncludeTeamsOnly(e.target.checked)} />
+          Include {plural(teamsLines, 'line')} from Teams
         </label>
       )}
       {status.kind === 'error' && (

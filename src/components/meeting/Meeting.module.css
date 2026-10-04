@@ -630,6 +630,193 @@
   }
 }
 
+/* Lines that only the Teams transcript has (refined copies): tinted, with an accent edge, never color alone (tag). */
+.teamsOnly {
+  background: var(--tint-info);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.teamsOnly .text {
+  color: var(--ink-2);
+}
+
+.tagTeams {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: var(--accent-ink);
+}
+
+.tagWarn {
+  border-color: color-mix(in srgb, var(--warn) 75%, transparent);
+  background: var(--tint-warn);
+  color: var(--ink);
+}
+
+.tagWarn::before {
+  content: '▲ ';
+  color: var(--warn-glyph);
+  font-size: 9px;
+  vertical-align: 1px;
+}
+
+/* ---- refine with Teams transcript ---- */
+
+.refineCollapsed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.refine {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.refineDragging {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: var(--tint-info);
+}
+
+.refineHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.refineTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.refineIntro {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.refineSteps {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink-2);
+}
+
+.refineInput {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pasteArea {
+  width: 100%;
+  min-height: 8.5em;
+  max-height: 40vh;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.pasteArea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.fileChip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.fileChip .linkButton {
+  margin-left: 0;
+}
+
+.refineActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.preview {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.previewSpeakers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.previewSpeakers li {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.refineProgress,
+.refineDone {
+  display: grid;
+  gap: 6px;
+}
+
+.refinePrivacy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.refinePrivacy .privacyIcon {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+
+.refinedInfo > summary {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.refinedInfo[open] {
+  display: grid;
+  gap: 6px;
+}
+
 /* ---- speaker chips ---- */
 
 .speaker {

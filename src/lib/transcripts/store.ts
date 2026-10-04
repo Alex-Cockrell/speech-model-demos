@@ -8,7 +8,15 @@
 import { errorMessage } from '../benchmark/errors';
 import type { AudioSourceKind } from '../types';
 import { echoCount } from './model';
-import type { MeetingSegment, MeetingSpeaker, MeetingTranscript, TranscriptStatus, TranscriptSummary } from './types';
+import type {
+  MeetingSegment,
+  MeetingSpeaker,
+  MeetingTranscript,
+  RefinementInputKind,
+  TranscriptRefinement,
+  TranscriptStatus,
+  TranscriptSummary,
+} from './types';
 
 export const TRANSCRIPT_DB_NAME = 'speech-poc-transcripts';
 const DB_VERSION = 1;
@@ -35,6 +43,7 @@ export interface TranscriptStore {
 
 export function summarizeTranscript(t: MeetingTranscript, status: TranscriptStatus, savedAtMs: number): TranscriptSummary {
   const visible = t.segments.filter((s) => s.echoOf === null);
+  const teamsLines = visible.filter((s) => s.origin === 'teams').length;
   const speakers = new Set<string>();
   for (const s of visible) if (s.speakerId !== null) speakers.add(s.speakerId);
   return {
@@ -49,6 +58,8 @@ export function summarizeTranscript(t: MeetingTranscript, status: TranscriptStat
     status,
     savedAtMs,
     echoLines: echoCount(t.segments),
+    ...(t.refinement ? { refined: true } : {}),
+    ...(teamsLines > 0 ? { teamsLines } : {}),
   };
 }
 
@@ -114,6 +125,38 @@ function normalizeSegment(raw: unknown): MeetingSegment | null {
     echoOf: typeof raw.echoOf === 'string' ? raw.echoOf : null,
     speakerManual: raw.speakerManual === true,
     originalText: typeof raw.originalText === 'string' ? raw.originalText : null,
+    ...(raw.origin === 'teams' ? { origin: 'teams' as const } : {}),
+    ...(raw.speakerUncertain === true ? { speakerUncertain: true } : {}),
+  };
+}
+
+const REFINEMENT_INPUTS: readonly RefinementInputKind[] = ['paste', 'txt', 'vtt', 'docx'];
+
+/** The refinement summary of a refined copy; missing numbers read as 0 (it is informational only). */
+function normalizeRefinement(raw: Loose): TranscriptRefinement {
+  return {
+    source: 'teams',
+    fromTranscriptId: str(raw.fromTranscriptId),
+    fromTitle: str(raw.fromTitle),
+    fileName: typeof raw.fileName === 'string' ? raw.fileName : null,
+    input: REFINEMENT_INPUTS.includes(raw.input as RefinementInputKind) ? (raw.input as RefinementInputKind) : 'paste',
+    turns: num(raw.turns),
+    speakers: num(raw.speakers),
+    clockTimes: raw.clockTimes === true,
+    offsetMs: num(raw.offsetMs),
+    driftMsPerHour: num(raw.driftMsPerHour),
+    anchorsUsed: num(raw.anchorsUsed),
+    anchorsFound: num(raw.anchorsFound),
+    wordsMatched: num(raw.wordsMatched),
+    wordsAligned: num(raw.wordsAligned),
+    segmentsSplit: num(raw.segmentsSplit),
+    teamsOnlyInserted: num(raw.teamsOnlyInserted),
+    lowConfidence: num(raw.lowConfidence),
+    outsideTeams: num(raw.outsideTeams),
+    correctionsSpread: num(raw.correctionsSpread),
+    correctionsKeptInFirstPiece: num(raw.correctionsKeptInFirstPiece),
+    elapsedMs: num(raw.elapsedMs),
+    refinedAt: str(raw.refinedAt),
   };
 }
 
@@ -145,6 +188,7 @@ export function normalizeTranscript(raw: unknown): MeetingTranscript | null {
     stats: isObject(raw.stats) ? (raw.stats as unknown as MeetingTranscript['stats']) : null,
     models: { asr: models.asr ?? null, speaker: models.speaker ?? null },
     app,
+    ...(isObject(raw.refinement) ? { refinement: normalizeRefinement(raw.refinement) } : {}),
   };
 }
 
@@ -163,6 +207,8 @@ function normalizeSummary(raw: unknown): TranscriptSummary | null {
     status: STATUSES.includes(raw.status as TranscriptStatus) ? (raw.status as TranscriptStatus) : 'complete',
     savedAtMs: num(raw.savedAtMs),
     echoLines: num(raw.echoLines),
+    ...(raw.refined === true ? { refined: true } : {}),
+    ...(num(raw.teamsLines) > 0 ? { teamsLines: num(raw.teamsLines) } : {}),
   };
 }
 

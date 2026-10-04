@@ -36,9 +36,11 @@ const NEW_SPEAKER = '__new__';
 /** One finalized line: [mm:ss] · speaker · text, with inline editors for its speaker and its text. */
 export const SegmentLine = memo(function SegmentLine({ docId, segment, speaker, pending, editing, choices, actions }: LineProps) {
   const echo = segment.echoOf !== null;
+  const fromTeams = segment.origin === 'teams';
+  const uncertain = segment.speakerUncertain === true && !segment.speakerManual && !echo;
   const toggle = (mode: EditMode) => actions.setEditing(editing === mode ? null : segment.id, mode);
   return (
-    <li className={cx(styles.line, echo && styles.echo)}>
+    <li className={cx(styles.line, echo && styles.echo, fromTeams && styles.teamsOnly)}>
       <span className={styles.time}>{formatOffset(segment.startMs)}</span>
       <SpeakerChip
         speaker={speaker}
@@ -60,6 +62,22 @@ export const SegmentLine = memo(function SegmentLine({ docId, segment, speaker, 
           {echo && (
             <span className={styles.tag} title="The microphone picked up the call audio from the speakers; the call audio line has the same words.">
               duplicate of call audio
+            </span>
+          )}
+          {fromTeams && (
+            <span
+              className={cx(styles.tag, styles.tagTeams)}
+              title="Only in the Teams transcript: this recording has no words here (often people talking over each other). Text and timing are Teams'."
+            >
+              from Teams
+            </span>
+          )}
+          {uncertain && (
+            <span
+              className={cx(styles.tag, styles.tagWarn)}
+              title="Few of this line's words matched this speaker's words in the Teams transcript, so the speaker may be wrong. Click the speaker to change it."
+            >
+              speaker uncertain
             </span>
           )}
         </p>

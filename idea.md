@@ -722,6 +722,7 @@ Added after the first build. The prototype now also covers the two features inte
 - A local speaker-embedding model labels speakers Speaker 1, 2, … per source. Labels can be renamed, merged and re-identified.
 - When the microphone also hears the call through speakers, duplicate "echo" lines are detected and hidden.
 - Transcripts are autosaved in the browser during the meeting and export as Markdown, text, JSON, WebVTT or SRT.
+- After the meeting, the Teams transcript (pasted, .docx or .vtt) can refine a saved transcript: our words, Teams' speaker names and turns (added in 0.2.1).
 - Live indicators show whether the machine keeps up: real-time factor and untranscribed backlog.
 
 ## Read Aloud
@@ -777,7 +778,7 @@ Every run had 0 network requests between Record and the end of playback, includi
 
 - **Noise robustness.** Speech segmentation uses an energy-based voice detector. In a loud room (two 3D printers, a fan, echo) it started late (3.9 s to first text) and the live text briefly went blank; clean audio does not show either. A small neural voice detector (Silero VAD, ≈2 MB) is the first fix to try.
 - **Auto-submit (no Stop button).** Segments already close after 600 ms of silence. For a speak-then-respond flow: submit after ≈0.7 s of silence when the text ends with sentence punctuation, otherwise wait up to ≈1.5–2 s. Depends on the voice-detector fix above in noisy rooms.
-- **Speaker labels on calls.** Speaker identification works on clean turn-taking but degrades with crosstalk and quick exchanges: segments are cut at pauses, so overlapping speakers share one label, and call audio is a single mixed stream. Teams knows who speaks from per-participant streams; importing its transcript to fix speakers is planned as 0.2.1 (see below).
+- **Speaker labels on calls.** Speaker identification works on clean turn-taking but degrades with crosstalk and quick exchanges: segments are cut at pauses, so overlapping speakers share one label, and call audio is a single mixed stream. Teams knows who speaks from per-participant streams; **Refine with Teams transcript** (0.2.1) takes its speaker names and turns while keeping our words. On a simulated crosstalk meeting it raised correctly attributed words from 55% to 100%; a 90-minute meeting refines in ≈130 ms. Untested on a real Teams clipboard so far: check the pasted-text preview on the first real meeting.
 - **WebGPU first text.** The first inference of each recording is slower on WebGPU (first text 0.6–0.9 s vs 0.36 s on WASM). A warm-up pass when recording starts would hide it.
 - **Speaker model licence.** CAM++ weights are Apache-2.0 upstream; the re-export repository used for downloads has no licence tag. Confirm before production.
 - **R2 mirror.** `r2/cors.json` still has a placeholder origin; use the real app origin(s), e.g. https://speechmodeldemos.projects.alex.cockrell.ai.

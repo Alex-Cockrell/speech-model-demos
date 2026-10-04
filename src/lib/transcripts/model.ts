@@ -270,7 +270,8 @@ function newSpeakerId(registry: SpeakerRegistry, source: AudioSourceKind): strin
 
 /**
  * Sets the speaker of one line by hand (another speaker of the same source, a new speaker, or Unknown).
- * The choice sticks: re-identification leaves it alone. A line reassigned this way is no longer treated as an echo.
+ * The choice sticks: re-identification leaves it alone. A line reassigned this way is no longer treated as an echo
+ * and no longer marked "speaker uncertain".
  */
 export function reassignSegment(doc: TranscriptDoc, segmentId: string, target: SpeakerTarget): TranscriptDoc {
   const index = indexOfSegment(doc, segmentId);
@@ -289,7 +290,9 @@ export function reassignSegment(doc: TranscriptDoc, segmentId: string, target: S
     speakerId = speaker.id;
   }
   if (segment.speakerId === speakerId && segment.speakerManual && segment.echoOf === null) return doc;
-  return replaceSegment(doc, index, { ...segment, speakerId, speakerConfidence: null, speakerManual: true, echoOf: null }, registry);
+  // A speaker chosen by hand is no longer uncertain (refined transcripts).
+  const { speakerUncertain: _uncertain, ...rest } = segment;
+  return replaceSegment(doc, index, { ...rest, speakerId, speakerConfidence: null, speakerManual: true, echoOf: null }, registry);
 }
 
 /**

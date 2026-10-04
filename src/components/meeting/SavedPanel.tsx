@@ -104,6 +104,11 @@ function SavedItem({
             {chip.label}
           </Chip>
         )}
+        {item.refined && (
+          <Chip tone="info" title="A copy whose speaker names come from the meeting's Teams transcript">
+            Refined
+          </Chip>
+        )}
       </div>
       <div className={styles.savedActions}>
         <button
@@ -125,7 +130,7 @@ function SavedItem({
           onConfirm={() => void c.deleteSaved(item.id)}
         />
       </div>
-      {exporting && <ExportControls load={() => c.loadTranscript(item.id)} echoLines={item.echoLines} />}
+      {exporting && <ExportControls load={() => c.loadTranscript(item.id)} echoLines={item.echoLines} teamsLines={item.teamsLines ?? 0} />}
     </li>
   );
 }
