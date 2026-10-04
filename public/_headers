@@ -1,0 +1,7 @@
+# Cloudflare Pages / Workers static assets headers. OWNER: platform agent.
+# Cross-origin isolation enables SharedArrayBuffer → multithreaded ONNX Runtime WASM (spec §16).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin
+  X-Content-Type-Options: nosniff

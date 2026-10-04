@@ -1,0 +1,12 @@
+/* OWNER: UI agent. Base reset only; the dashboard styles live with the components. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
