@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useId } from 'react';
-import { modelFileUrl } from '@/lib/config';
+import { NETWORK_LOCKED, modelFileUrl } from '@/lib/config';
 import {
   BACKEND_CHOICES,
   ENCODER_QUANTS,
@@ -111,6 +111,13 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
 
           <fieldset className={styles.fieldset} disabled={locked}>
             <legend>Model source</legend>
+            {NETWORK_LOCKED ? (
+              <p className={styles.hint}>
+                Fixed by this build: {source?.kind === 'mirror' ? <code className={styles.breakAll}>{source.baseUrl}</code> : 'the public model host'}.
+                The browser blocks connections to any other host, so audio and text cannot leave this device.
+              </p>
+            ) : (
+              <>
             <Segmented
               label="Model source"
               value={s.sourceKind}
@@ -135,6 +142,8 @@ export const SettingsPanel = memo(function SettingsPanel({ settings: s, onChange
                   }}
                 />
               </Field>
+            )}
+              </>
             )}
             {sourceError ? (
               <p className={styles.fieldError}>{sourceError}</p>

@@ -69,7 +69,14 @@ export const LIBRARY_VERSIONS = {
 
 export const HUGGING_FACE_BASE_URL = 'https://huggingface.co';
 
-/** Build-time default; the UI may override it at runtime (persisted per browser). */
+/**
+ * Production builds lock network access to this app and the build's model host (Content-Security-Policy from
+ * scripts/network-lock.mjs). The model source is then fixed by the build: the in-app mirror setting is hidden and
+ * ignored. `next dev` is unlocked; NETWORK_LOCK=off builds without the lock.
+ */
+export const NETWORK_LOCKED = process.env.NEXT_PUBLIC_NETWORK_LOCK === 'on';
+
+/** Build-time default; unlocked builds let the UI override it at runtime (persisted per browser). */
 export function defaultModelSource(): ModelSource {
   const mirror = process.env.NEXT_PUBLIC_MODEL_BASE_URL?.trim().replace(/\/+$/, '');
   return mirror ? { kind: 'mirror', baseUrl: mirror } : { kind: 'huggingface', baseUrl: HUGGING_FACE_BASE_URL };

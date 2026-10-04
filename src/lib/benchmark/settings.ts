@@ -1,4 +1,4 @@
-import { DEFAULT_ASR_SETTINGS, DEFAULT_TTS_SETTINGS, HUGGING_FACE_BASE_URL, defaultModelSource } from '../config';
+import { DEFAULT_ASR_SETTINGS, DEFAULT_TTS_SETTINGS, HUGGING_FACE_BASE_URL, NETWORK_LOCKED, defaultModelSource } from '../config';
 import type { AsrSettings, BackendChoice, ModelSource, RunMode, TtsSettings } from '../types';
 import { BENCHMARK_PHRASES, DEFAULT_PHRASE_ID } from './phrases';
 import { TEST_MATRIX } from './testMatrix';
@@ -140,6 +140,8 @@ export function resolveModelSource(s: Pick<AppSettings, 'sourceKind' | 'mirrorBa
   source: ModelSource | null;
   error: string | null;
 } {
+  // A locked build may only reach its own model host, so a saved in-app choice is ignored.
+  if (NETWORK_LOCKED) return { source: defaultModelSource(), error: null };
   if (s.sourceKind === 'huggingface') return { source: { kind: 'huggingface', baseUrl: HUGGING_FACE_BASE_URL }, error: null };
   const baseUrl = normalizeBaseUrl(s.mirrorBaseUrl);
   return baseUrl

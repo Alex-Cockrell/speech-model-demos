@@ -8,6 +8,8 @@ A prototype of browser-local speech features for the product (spec and decisions
 
 The UI deliberately shows no model, library or host names. They are documented here and recorded in the benchmark JSON.
 
+**Test deployment:** https://speechmodeldemos.projects.alex.cockrell.ai (Cloudflare, deployed automatically from `main`).
+
 ```text
 Microphone / shared call audio → AudioWorklet (16 kHz PCM) → ASR worker: NVIDIA Parakeet TDT 0.6B v3 (parakeet.js)
   → segments → speaker worker: 3D-Speaker CAM++ embeddings + clustering → transcript
@@ -51,6 +53,15 @@ Paste text or open a `.txt`/`.md` file, then **Play**. Markdown is cleaned up fo
 ### Benchmark
 
 The original spec (sections 1–20 of idea.md): Load models, Record, Stop, and the transcript is read back with every stage timed. See [Test matrix](#test-matrix-spec-17).
+
+## Network lock
+
+Production builds add a Content-Security-Policy (`scripts/network-lock.mjs`, run as `postbuild`, written into `out/_headers`). The browser then refuses every connection except to the app itself and the build's model host (the public model host, or `NEXT_PUBLIC_MODEL_BASE_URL` when set), so audio and text cannot leave the device even through a bug. The in-app model-source setting is hidden in locked builds.
+
+- On by default for `npm run build` (and therefore on Cloudflare). `npm run dev` is never locked.
+- To build without it, e.g. to try models from another URL: set `NETWORK_LOCK=off` for the build (PowerShell: `$env:NETWORK_LOCK='off'; npm run build`; Cloudflare: a build environment variable).
+- To check it on a deployment: DevTools → Network → the document → Response headers shows `Content-Security-Policy`; in the console, `fetch('https://example.com')` fails with a Content-Security-Policy error.
+- It covers fetch/XHR/WebSocket/beacons, scripts, images, media and frames. Like any page policy it cannot stop a user from clicking a link away.
 
 ## Production preview
 

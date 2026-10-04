@@ -36,6 +36,9 @@ export default function config(phase: string): NextConfig {
     // bundles, where there is no `process` object to read an undefined variable from.
     env: {
       NEXT_PUBLIC_MODEL_BASE_URL: process.env.NEXT_PUBLIC_MODEL_BASE_URL ?? '',
+      // Same rule as scripts/network-lock.mjs, which writes the policy after the build. `next dev` is never locked.
+      NEXT_PUBLIC_NETWORK_LOCK:
+        phase !== PHASE_DEVELOPMENT_SERVER && (process.env.NETWORK_LOCK ?? '').toLowerCase() !== 'off' ? 'on' : 'off',
       NEXT_PUBLIC_APP_VERSION: pkg.version,
       NEXT_PUBLIC_COMMIT_SHA: commitSha(),
       NEXT_PUBLIC_BUILT_AT: new Date().toISOString(),

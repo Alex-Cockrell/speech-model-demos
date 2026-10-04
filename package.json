@@ -8,6 +8,7 @@
     "dev": "next dev",
     "prebuild": "node scripts/copy-ort-assets.mjs",
     "build": "next build",
+    "postbuild": "node scripts/network-lock.mjs",
     "preview": "node scripts/serve-out.mjs",
     "typecheck": "tsc --noEmit",
     "copy-ort-assets": "node scripts/copy-ort-assets.mjs",
