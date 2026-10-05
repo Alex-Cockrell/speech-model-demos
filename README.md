@@ -65,6 +65,17 @@ Production builds add a Content-Security-Policy (`scripts/network-lock.mjs`, run
 - To check it on a deployment: DevTools → Network → the document → Response headers shows `Content-Security-Policy`; in the console, `fetch('https://example.com')` fails with a Content-Security-Policy error.
 - It covers fetch/XHR/WebSocket/beacons, scripts, images, media and frames. Like any page policy it cannot stop a user from clicking a link away.
 
+## Languages
+
+| Feature | Languages |
+| --- | --- |
+| Speech recognition (meeting transcription, benchmark) | 25 European languages, detected automatically per segment, with punctuation and capitalization: Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian. No Asian languages. |
+| Speech synthesis (read aloud, benchmark read-back) | English only (US and UK accents; the app offers two US voices, Heart and Michael). The model itself has voices for other languages, but kokoro-js 1.2.1 only converts English text to phonemes. |
+| Speaker identification | Language-independent (it compares voices, not words). |
+| Teams transcript refinement, echo detection, word error rate | Any of the recognized languages: word matching is Unicode-aware (accented letters, Greek and Cyrillic). |
+
+Accuracy figures in idea.md are for English; other languages are untested here.
+
 ## Production preview
 
 ```sh
