@@ -3,7 +3,8 @@
 import type { ReaderPosition, ReaderSnapshot } from '@/lib/tts/reader';
 import type { ModelLoadRecord } from '@/lib/types';
 import { BACKEND_LABEL, DASH, fmtBytes, fmtMs, fmtRtf } from '../format';
-import { Kv, KvList, Meter, Notice, Panel } from '../ui';
+import { APP_INFO } from '@/lib/config';
+import { CopyButton, Kv, KvList, Meter, Notice, Panel } from '../ui';
 import styles from './ReadAloud.module.css';
 
 interface Props {
@@ -88,6 +89,18 @@ export function ReadAloudMetrics({ snapshot, position, totalPieces, record, play
 
   return (
     <Panel title="Read-aloud metrics" subtitle="Measured in this browser" className={className}>
+      {m && m.failedPieces > 0 && (
+        <Notice tone="warn" title="Some sentences were skipped">
+          The voice model returned empty audio for {m.failedPieces} piece{m.failedPieces === 1 ? '' : 's'}, even after rewording;
+          {m.failedPieces === 1 ? ' it was' : ' they were'} skipped instead of played as silence. Copy the diagnostics below to report it.
+        </Notice>
+      )}
+      {m && m.retriedPieces > m.failedPieces && (
+        <Notice tone="info" title="Empty audio was regenerated">
+          {m.retriedPieces - m.failedPieces} piece{m.retriedPieces - m.failedPieces === 1 ? '' : 's'} came back from the voice model as empty audio
+          and {m.retriedPieces - m.failedPieces === 1 ? 'was' : 'were'} regenerated with slightly different wording.
+        </Notice>
+      )}
       {m && m.truncatedPieces > 0 && (
         <Notice tone="warn" title="Some text was cut off">
           {m.truncatedPieces} piece{m.truncatedPieces === 1 ? '' : 's'} could not be split to fit the voice model’s 512-token window; the end of
@@ -168,6 +181,7 @@ export function ReadAloudMetrics({ snapshot, position, totalPieces, record, play
         <button type="button" onClick={onDownload} disabled={!archive || archive.pieces === 0}>
           Download audio (WAV)
         </button>
+        <CopyButton label="Copy diagnostics JSON" disabled={!snapshot} getText={() => diagnosticsJson(snapshot, record)} />
         <span className={styles.hint}>Everything generated so far, built in this browser.</span>
       </div>
       {recent.length > 0 && (
@@ -204,5 +218,34 @@ export function ReadAloudMetrics({ snapshot, position, totalPieces, record, play
         </details>
       )}
     </Panel>
+  );
+}
+
+/** What to send when speech goes missing: settings, counters, every problem piece and the most recent pieces. */
+function diagnosticsJson(snapshot: ReaderSnapshot | null, record: ModelLoadRecord | null): string {
+  return JSON.stringify(
+    {
+      kind: 'read-aloud-diagnostics',
+      createdAt: new Date().toISOString(),
+      app: { ...APP_INFO, origin: location.origin },
+      userAgent: navigator.userAgent,
+      voiceModel: record
+        ? {
+            backend: record.resolvedBackend,
+            precision: record.quantization.model ?? null,
+            wasmThreads: record.wasm.effectiveThreads,
+            revision: record.revision,
+          }
+        : null,
+      voice: snapshot?.voice ?? null,
+      speed: snapshot?.speed ?? null,
+      status: snapshot?.status ?? null,
+      error: snapshot?.error ?? null,
+      metrics: snapshot?.metrics ?? null,
+      problems: snapshot?.problems ?? [],
+      recent: snapshot?.recent ?? [],
+    },
+    null,
+    2,
   );
 }

@@ -75,6 +75,7 @@ export class SpeakRun {
       samples: event.audio,
       sampleRate: event.sampleRate,
     });
+    if (event.audioCheck) record.audioCheck = event.audioCheck;
     this.chunks.push(record);
     if (this.firstPlaybackStartAt === null && record.audioDurationMs > 0) {
       const at = record.scheduledPlaybackAt;
@@ -189,6 +190,10 @@ export function buildRunMetrics(input: RunMetricsInput): TtsRunMetrics {
     chunks,
     chunkIntervals: intervalStats(chunks.map((c) => c.generatedAt)),
     bufferUnderruns: chunks.filter((c) => c.underrun).length,
+    audioProblems: {
+      retriedChunks: chunks.filter((c) => c.audioCheck && c.audioCheck.retries > 0).length,
+      failedChunks: chunks.filter((c) => c.audioCheck?.failed).length,
+    },
     audiblePauseMs: sum(chunks.map((c) => c.gapMs)),
     minBufferedMs: levels.length > 0 ? Math.min(...levels) : null,
     maxBufferedMs: levels.length > 0 ? Math.max(...levels) : null,

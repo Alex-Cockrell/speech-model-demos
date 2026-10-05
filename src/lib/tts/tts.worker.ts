@@ -13,6 +13,7 @@ import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentat
 import type { DownloadMetrics, FileFetchRecord, LoadProgress, WasmRuntimeInfo } from '../types';
 import {
   errorMessage,
+  type ChunkAudioCheck,
   type LoadRequest,
   type SpeakRequest,
   type SynthesizeRequest,
@@ -20,6 +21,7 @@ import {
   type TtsWorkerRequest,
   type WorkerLoadResult,
 } from './protocol';
+import { retryTexts, scrubNonFinite, speechProblem } from './audio-check';
 import { splitterFor } from './split';
 import { KOKORO_SAMPLE_RATE, synthesizePiece, type PieceSynthesis } from './synthesize';
 import { prefetchVoice } from './voice-cache';
@@ -228,11 +230,22 @@ async function speak(req: SpeakRequest): Promise<void> {
       });
       let generationStart = now();
       for await (const { text, audio } of chunks) {
-        const generatedAt = now();
         if (cancelledRuns.has(req.id)) break;
-        const samples = ownedSamples(audio.audio);
+        const checked = await checkedChunk(model, text, audio.audio, req);
+        const generatedAt = now();
+        const samples = ownedSamples(checked.samples);
         post(
-          { type: 'chunk', id: req.id, index, text, generationStart, generatedAt, audio: samples, sampleRate: audio.sampling_rate },
+          {
+            type: 'chunk',
+            id: req.id,
+            index,
+            text,
+            generationStart,
+            generatedAt,
+            audio: samples,
+            sampleRate: audio.sampling_rate,
+            audioCheck: checked.audioCheck,
+          },
           [samples.buffer],
         );
         index++;
@@ -245,6 +258,31 @@ async function speak(req: SpeakRequest): Promise<void> {
     throw new Error(`${errorMessage(e)} (${notPreloaded(req.voice)})`);
   }
   post({ type: 'done', id: req.id, generationCompleteAt: now(), chunkCount: index, cancelled: cancelledRuns.has(req.id) });
+}
+
+/**
+ * The model can return unusable audio for some chunks (all NaN in fp16 on certain clauses). Regenerate with
+ * altered wording; if that fails too, play silence of the same length (keeps the benchmark's timing honest) and
+ * report it in the chunk's audioCheck.
+ */
+async function checkedChunk(
+  model: KokoroTTS,
+  text: string,
+  samples: Float32Array,
+  req: SpeakRequest,
+): Promise<{ samples: Float32Array; audioCheck: ChunkAudioCheck | null }> {
+  const problem = speechProblem(samples);
+  if (!problem) return { samples, audioCheck: null };
+  let retries = 0;
+  for (const variant of retryTexts(text)) {
+    retries++;
+    console.warn(`[tts] chunk came back ${problem}; retrying as "${variant}"`);
+    const retry = (await model.generate(variant, { voice: req.voice as KokoroVoice, speed: req.speed })).audio;
+    if (!speechProblem(retry)) return { samples: retry, audioCheck: { problem, retries, failed: false } };
+  }
+  console.warn(`[tts] chunk still unusable after ${retries} retries: "${text}"`);
+  scrubNonFinite(samples);
+  return { samples, audioCheck: { problem, retries, failed: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +304,9 @@ async function synthesize(req: SynthesizeRequest): Promise<void> {
       maxTokens: 0,
       overflowSplits: 0,
       truncated: false,
+      firstProblem: null,
+      retries: 0,
+      failed: false,
       skipped: true,
     });
     return;
@@ -292,6 +333,9 @@ async function synthesize(req: SynthesizeRequest): Promise<void> {
       maxTokens: result.maxTokens,
       overflowSplits: result.overflowSplits,
       truncated: result.truncated,
+      firstProblem: result.firstProblem,
+      retries: result.retries,
+      failed: result.failed,
       skipped: false,
     },
     [audio.buffer],

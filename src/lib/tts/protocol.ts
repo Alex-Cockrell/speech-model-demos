@@ -18,6 +18,7 @@ import type {
   LoadProgress,
   ModelSource,
   ResolvedBackend,
+  TtsChunkRecord,
   TtsSettings,
   WasmRuntimeInfo,
 } from '../types';
@@ -96,7 +97,11 @@ export interface ChunkEvent {
   /** Mono PCM; its buffer is transferred. */
   audio: Float32Array<ArrayBuffer>;
   sampleRate: number;
+  /** Set when the model returned unusable audio for this chunk (see TtsChunkRecord.audioCheck). */
+  audioCheck: ChunkAudioCheck | null;
 }
+
+export type ChunkAudioCheck = NonNullable<TtsChunkRecord['audioCheck']>;
 
 export interface DoneEvent {
   type: 'done';
@@ -123,6 +128,12 @@ export interface SynthesizedEvent {
   overflowSplits: number;
   /** A part could not be split further and was synthesized truncated (its end is missing). */
   truncated: boolean;
+  /** What was wrong with the first attempt's audio ('invalid' = NaN samples), or null when it was fine. */
+  firstProblem: 'empty' | 'invalid' | 'silent' | null;
+  /** Re-generations with altered wording because the model returned empty (NaN or silent) audio. */
+  retries: number;
+  /** Still empty after the retries: no audio, the piece is skipped. */
+  failed: boolean;
   /** Cancelled before it started: no audio. A request cancelled while running still returns its audio. */
   skipped: boolean;
 }

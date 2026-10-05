@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 // What the app can load, at the revisions pinned in src/lib/config.ts (PARAKEET_MODEL, KOKORO_MODEL, SPEAKER_MODEL).
 // Keep the two in sync: a revision change here and in config.ts means re-running this script.
 // VOICES must cover the voice picker (VOICES in src/lib/benchmark/settings.ts); 0.5 MB each.
-const VOICES = ['af_heart', 'af_bella', 'af_nicole', 'am_michael', 'am_fenrir', 'bf_emma', 'bm_george', 'bm_fable'];
+const VOICES = ['af_heart', 'am_michael'];
 const MANIFEST = [
   {
     configName: 'PARAKEET_MODEL',

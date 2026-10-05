@@ -60,6 +60,14 @@ export interface PieceGeneration {
   inferences: number;
   overflowSplits: number;
   truncated: boolean;
+  /** Text sent to the voice model. */
+  text: string;
+  /** What was wrong with the first attempt's audio ('invalid' = NaN samples), or null. */
+  problem: 'empty' | 'invalid' | 'silent' | null;
+  /** Re-generations with altered wording after empty audio. */
+  retries: number;
+  /** No usable audio even after retries: skipped, not played. */
+  failed: boolean;
   /** Superseded by a seek or a voice/speed change before it arrived (archived, not played). */
   superseded: boolean;
 }
@@ -81,6 +89,10 @@ export interface ReaderMetrics {
   inferences: number;
   overflowSplits: number;
   truncatedPieces: number;
+  /** Pieces that came back empty from the voice model and were generated again with altered wording. */
+  retriedPieces: number;
+  /** Pieces still empty after retries; they were skipped. */
+  failedPieces: number;
   generationComputeMs: number;
   generatedAudioSec: number;
   /** generationComputeMs / generated audio over the whole session. */
@@ -105,6 +117,8 @@ export interface ReaderSnapshot {
   metrics: ReaderMetrics;
   /** Most recent generations, newest last. */
   recent: PieceGeneration[];
+  /** Every generation whose audio came back unusable this session (capped), for the diagnostics export. */
+  problems: PieceGeneration[];
 }
 
 export interface ReaderPosition {
@@ -157,6 +171,7 @@ const SETTINGS_DEBOUNCE_MS = 300;
 const SUSPENDED_TICKS = 8;
 const RECENT_GENERATIONS = 5;
 const KEPT_GENERATIONS = 50;
+const MAX_PROBLEM_LOG = 200;
 
 interface Scheduled {
   piece: number;
@@ -228,10 +243,11 @@ export class ReadAloudSession {
   private evicted = 0;
 
   private readonly generations: PieceGeneration[] = [];
-  private totals = { pieces: 0, superseded: 0, inferences: 0, overflowSplits: 0, truncated: 0, computeMs: 0, audioSec: 0 };
+  private readonly problems: PieceGeneration[] = [];
+  private totals = { pieces: 0, superseded: 0, inferences: 0, overflowSplits: 0, truncated: 0, retried: 0, failed: 0, computeMs: 0, audioSec: 0 };
   /** Measured speaking rate: displayed characters per second of audio, normalised to speed 1. */
   private rate = { chars: 0, sec: 0 };
-  private metrics: Omit<ReaderMetrics, 'piecesGenerated' | 'supersededGenerations' | 'inferences' | 'overflowSplits' | 'truncatedPieces' | 'generationComputeMs' | 'generatedAudioSec' | 'rtf' | 'recentRtf' | 'archive'>;
+  private metrics: Omit<ReaderMetrics, 'piecesGenerated' | 'supersededGenerations' | 'inferences' | 'overflowSplits' | 'truncatedPieces' | 'retriedPieces' | 'failedPieces' | 'generationComputeMs' | 'generatedAudioSec' | 'rtf' | 'recentRtf' | 'archive'>;
   private snapshot: ReaderSnapshot;
 
   constructor(init: ReaderInit) {
@@ -535,7 +551,7 @@ export class ReadAloudSession {
       this.record(request, result, !wasActive);
       this.store(request, result);
       if (wasActive && request.piece === this.nextIndex && request.voice === this.voice && request.speed === this.speed) {
-        this.schedule(request.piece, result.audio, result.sampleRate);
+        if (result.audio.length > 0) this.schedule(request.piece, result.audio, result.sampleRate);
         this.nextIndex++;
       }
     }
@@ -570,9 +586,14 @@ export class ReadAloudSession {
       inferences: result.inferences,
       overflowSplits: result.overflowSplits,
       truncated: result.truncated,
+      text: this.pieces[request.piece].text,
+      problem: result.firstProblem,
+      retries: result.retries,
+      failed: result.failed,
       superseded,
     };
     this.generations.push(generation);
+    if (generation.problem && this.problems.length < MAX_PROBLEM_LOG) this.problems.push(generation);
     if (this.generations.length > KEPT_GENERATIONS) this.generations.shift();
     const totals = this.totals;
     totals.pieces++;
@@ -580,6 +601,8 @@ export class ReadAloudSession {
     totals.inferences += result.inferences;
     totals.overflowSplits += result.overflowSplits;
     if (result.truncated) totals.truncated++;
+    if (result.retries > 0) totals.retried++;
+    if (result.failed) totals.failed++;
     totals.computeMs += computeMs;
     totals.audioSec += audioSec;
     if (audioSec > 0) {
@@ -725,6 +748,8 @@ export class ReadAloudSession {
         inferences: totals.inferences,
         overflowSplits: totals.overflowSplits,
         truncatedPieces: totals.truncated,
+        retriedPieces: totals.retried,
+        failedPieces: totals.failed,
         generationComputeMs: totals.computeMs,
         generatedAudioSec: totals.audioSec,
         rtf: totals.audioSec > 0 ? totals.computeMs / 1000 / totals.audioSec : null,
@@ -737,6 +762,7 @@ export class ReadAloudSession {
         },
       },
       recent: this.generations.slice(-RECENT_GENERATIONS),
+      problems: [...this.problems],
     };
   }
 }

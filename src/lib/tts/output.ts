@@ -15,10 +15,11 @@ const CEILING_DBFS = -1;
 const LOOKAHEAD_MS = 3;
 const RELEASE_MS = 60;
 
-/** Apply makeup gain and peak limiting to one chunk, in place. */
+/** Apply makeup gain and peak limiting to one chunk, in place. Non-finite samples become silence. */
 export function applySpeechLoudness(samples: Float32Array, sampleRate: number): void {
   const n = samples.length;
   if (n === 0) return;
+  for (let i = 0; i < n; i++) if (!Number.isFinite(samples[i])) samples[i] = 0;
   const gain = 10 ** (MAKEUP_GAIN_DB / 20);
   const ceiling = 10 ** (CEILING_DBFS / 20);
 

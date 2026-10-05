@@ -50,7 +50,7 @@ The live bar shows the real-time factor and a backlog of speech waiting to be tr
 
 ### Read aloud
 
-Paste text or open a `.txt`/`.md` file, then **Play**. Markdown is cleaned up for listening: links are read as their text, list items and table rows become sentences, and code blocks are announced instead of read. Generation stays at most about 30 s ahead of playback; stalls (generation slower than playback) are counted and explained. **Download audio (WAV)** saves what has been generated.
+Paste text or open a `.txt`/`.md` file, then **Play**. Markdown is cleaned up for listening: links are read as their text, list items and table rows become sentences, and code blocks are announced instead of read. Generation stays at most about 30 s ahead of playback; stalls (generation slower than playback) are counted and explained. **Download audio (WAV)** saves what has been generated. **Copy diagnostics JSON** records every piece's exact text, voice, speed and precision, and whether its audio came back unusable; send it if speech ever goes missing. Voices: Heart (default) and Michael.
 
 ### Benchmark
 

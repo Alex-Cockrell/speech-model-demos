@@ -68,6 +68,12 @@ export interface SynthesisResult {
   overflowSplits: number;
   /** Part of the text could not be split further and was cut off by Kokoro's 512-token window. */
   truncated: boolean;
+  /** What was wrong with the first attempt's audio ('invalid' = NaN samples), or null when it was fine. */
+  firstProblem: 'empty' | 'invalid' | 'silent' | null;
+  /** Re-generations with altered wording because the model returned empty audio. */
+  retries: number;
+  /** No usable audio even after retries; `audio` is empty. */
+  failed: boolean;
   /** Cancelled before the worker started it. */
   skipped: boolean;
 }
@@ -213,6 +219,9 @@ export class TtsEngine {
             maxTokens: event.maxTokens,
             overflowSplits: event.overflowSplits,
             truncated: event.truncated,
+            firstProblem: event.firstProblem,
+            retries: event.retries,
+            failed: event.failed,
             skipped: event.skipped,
           }),
         )

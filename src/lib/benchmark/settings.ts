@@ -36,13 +36,7 @@ const SOURCE_KINDS: readonly ModelSource['kind'][] = ['huggingface', 'mirror'];
 /** `id` is the stored setting value (the model's voice id); `name` and `label` are what the UI shows. */
 export const VOICES: readonly { id: string; name: string; label: string }[] = [
   { id: 'af_heart', name: 'Heart', label: 'Heart · US female (default)' },
-  { id: 'af_bella', name: 'Bella', label: 'Bella · US female' },
-  { id: 'af_nicole', name: 'Nicole', label: 'Nicole · US female' },
   { id: 'am_michael', name: 'Michael', label: 'Michael · US male' },
-  { id: 'am_fenrir', name: 'Fenrir', label: 'Fenrir · US male' },
-  { id: 'bf_emma', name: 'Emma', label: 'Emma · UK female' },
-  { id: 'bm_george', name: 'George', label: 'George · UK male' },
-  { id: 'bm_fable', name: 'Fable', label: 'Fable · UK male' },
 ];
 
 /** Display name for a stored voice id; an id outside VOICES (e.g. from an old record) shows its name part only. */

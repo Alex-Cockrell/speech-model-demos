@@ -3,6 +3,7 @@
  * truncate it. Kept out of tts.worker.ts so it can be tested against the real model outside a worker.
  */
 import type { GenerateOptions, KokoroTTS } from 'kokoro-js';
+import { retryTexts, scrubNonFinite, speechProblem, type SpeechProblem } from './audio-check';
 import { KOKORO_MAX_TOKENS, splitInHalf } from './pieces';
 import { singlePieceSplitter } from './split';
 
@@ -24,6 +25,12 @@ export interface PieceSynthesis {
   overflowSplits: number;
   /** A part could not be split and was synthesized truncated. */
   truncated: boolean;
+  /** What was wrong with the first attempt's audio, or null when it was fine. */
+  firstProblem: SpeechProblem | null;
+  /** Re-generations with altered wording after the model returned empty audio. */
+  retries: number;
+  /** Still no usable audio after the retries: `audio` is empty and the piece must be skipped, not played. */
+  failed: boolean;
 }
 
 /** Thrown before inference when a piece fills Kokoro's whole token window, i.e. the tokenizer truncated it. */
@@ -99,10 +106,30 @@ export async function synthesizePiece(model: KokoroTTS, text: string, options: {
     maxTokens: 0,
     overflowSplits: 0,
     truncated: false,
+    firstProblem: null,
+    retries: 0,
+    failed: false,
   };
-  const parts: Float32Array[] = [];
+  let parts: Float32Array[] = [];
   await synthesizeText(model, text, options, parts, stats, 0);
   stats.audio = joinSamples(parts);
+  stats.firstProblem = speechProblem(stats.audio);
+  for (const variant of stats.firstProblem ? retryTexts(text) : []) {
+    const problem = speechProblem(stats.audio);
+    if (!problem) return stats;
+    console.warn(`[tts] piece came back ${problem}; retrying as "${variant}"`);
+    stats.retries++;
+    parts = [];
+    await synthesizeText(model, variant, options, parts, stats, 0);
+    stats.audio = joinSamples(parts);
+  }
+  const problem = speechProblem(stats.audio);
+  if (problem) {
+    console.warn(`[tts] piece still ${problem} after ${stats.retries} retries; skipping it: "${text}"`);
+    scrubNonFinite(stats.audio);
+    stats.audio = new Float32Array(0);
+    stats.failed = true;
+  }
   return stats;
 }
 

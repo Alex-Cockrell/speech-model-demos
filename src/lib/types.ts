@@ -260,6 +260,12 @@ export interface TtsChunkRecord {
   underrun: boolean;
   /** Audible silence caused by waiting for this chunk. */
   gapMs: number;
+  /**
+   * Present only when the voice model returned unusable audio for this chunk: 'invalid' (NaN samples, seen with
+   * fp16 on some clauses), 'silent' or 'empty'; retries with altered wording; failed = still unusable (played as
+   * silence).
+   */
+  audioCheck?: { problem: 'empty' | 'invalid' | 'silent'; retries: number; failed: boolean };
 }
 
 export interface TtsRunMetrics {
@@ -277,6 +283,8 @@ export interface TtsRunMetrics {
   /** Intervals between consecutive chunk generatedAt values. */
   chunkIntervals: IntervalStats;
   bufferUnderruns: number;
+  /** Chunks the voice model returned as unusable audio: regenerated, and still unusable after retries. */
+  audioProblems?: { retriedChunks: number; failedChunks: number };
   /** Sum of gapMs across chunks. */
   audiblePauseMs: number;
   minBufferedMs: number | null;
