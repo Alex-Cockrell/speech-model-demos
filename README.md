@@ -28,7 +28,7 @@ npm run dev        # http://localhost:3000
 
 - `predev` copies ONNX Runtime's `.wasm`/`.mjs` files into `public/ort/` (`scripts/copy-ort-assets.mjs`; generated and gitignored).
 - The dev server sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (`next.config.ts`), so the page is cross-origin isolated and ONNX Runtime can run multithreaded WASM. Open `http://localhost`, not a LAN IP: isolation and the microphone both need a secure context.
-- **Load models** downloads the weights from Hugging Face the first time (about 800 MiB for WASM, 1.5 GiB for WebGPU, plus 30 MB for the meeting speaker model; see [Model sizes](#model-sizes)) and keeps them in browser storage.
+- **Load models** (or **Load** on one model's card, e.g. only the voice model) downloads the weights from Hugging Face the first time (about 800 MiB for WASM, 1.5 GiB for WebGPU, plus 30 MB for the meeting speaker model; see [Model sizes](#model-sizes)) and keeps them in browser storage.
 
 ## Using the app
 
@@ -54,7 +54,7 @@ Paste text or open a `.txt`/`.md` file, then **Play**. Markdown is cleaned up fo
 
 ### Benchmark
 
-The original spec (sections 1–20 of idea.md): Load models, Record, Stop, and the transcript is read back with every stage timed. See [Test matrix](#test-matrix-spec-17).
+The original spec (sections 1–20 of idea.md): Load models, Record, Stop, and the transcript is read back with every stage timed. Each model card has its own **Load** button to load just that model; **Load models** loads every model that is not loaded yet or whose load-time settings changed. See [Test matrix](#test-matrix-spec-17).
 
 ## Network lock
 

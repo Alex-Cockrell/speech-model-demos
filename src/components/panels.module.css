@@ -144,6 +144,13 @@
   color: var(--ink-3);
 }
 
+.modelLoadButton {
+  align-self: center;
+  min-height: 28px;
+  padding: 3px 12px;
+  font-size: 13px;
+}
+
 .progress {
   display: grid;
   gap: 4px;

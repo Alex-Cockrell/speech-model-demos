@@ -37,7 +37,7 @@ export function BenchmarkView({ snapshot: s, controller: c }: { snapshot: Pipeli
         pending={pending}
         loading={s.loading}
         loadBlocker={loadBlocker(s)}
-        onLoad={() => void c.loadModels()}
+        onLoad={(keys) => void c.loadModels(keys)}
       />
       <RecorderPanel
         className={styles.recorder}

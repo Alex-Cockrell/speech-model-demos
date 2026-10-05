@@ -25,9 +25,12 @@ interface Props {
   pending: Record<ModelKey, string[]>;
   loading: boolean;
   loadBlocker: string | null;
-  onLoad: () => void;
+  /** Load (or reload with changed settings) these models, one after the other. */
+  onLoad: (keys: ModelKey[]) => void;
   className?: string;
 }
+
+const MODEL_KEYS = ['parakeet', 'kokoro'] as const satisfies readonly ModelKey[];
 
 const PHASE_LABEL: Record<LoadProgress['phase'], string> = {
   download: 'Downloading',
@@ -39,44 +42,101 @@ const PHASE_LABEL: Record<LoadProgress['phase'], string> = {
 
 type AnyModelState = ModelsState[ModelKey];
 
+/** Not loaded, failed, or loaded with settings that have changed since. */
+function needsLoad(model: AnyModelState, pending: string[]): boolean {
+  return model.phase !== 'ready' || pending.length > 0;
+}
+
 export const ModelsPanel = memo(function ModelsPanel({ models, pending, loading, loadBlocker, onLoad, className }: Props) {
+  // Models that are loaded and current are skipped: reloading them would only replace their cold/warm record
+  // with an instant session reuse.
+  const toLoad = MODEL_KEYS.filter((k) => needsLoad(models[k], pending[k]));
+  const ready = MODEL_KEYS.filter((k) => !toLoad.includes(k));
   const anyPending = pending.parakeet.length + pending.kokoro.length > 0;
-  const bothReady = models.parakeet.phase === 'ready' && models.kokoro.phase === 'ready';
   const status = loading
     ? `Loading the ${(models.parakeet.phase === 'loading' ? MODEL_NAMES.parakeet : MODEL_NAMES.kokoro).toLowerCase()}…`
-    : (loadBlocker ?? (anyPending ? 'Settings changed: Load models to apply them.' : bothReady ? 'Both models ready.' : 'Not loaded.'));
+    : (loadBlocker ??
+      (anyPending
+        ? 'Settings changed: reload to apply them.'
+        : toLoad.length === 0
+          ? 'Both models ready.'
+          : ready.length === 1
+            ? `${MODEL_NAMES[ready[0]]} ready.`
+            : 'Not loaded.'));
   return (
     <Panel
       title="Models"
-      subtitle="Loaded one after the other, so each model's download and initialization are measured on their own"
+      subtitle="Load one model or both. Models load one after the other, so each one's download and initialization are measured on their own"
       className={className}
       actions={
         <>
           <span className={styles.panelStatus} aria-live="polite">
             {status}
           </span>
-          <button type="button" className={styles.primaryButton} onClick={onLoad} disabled={loadBlocker !== null}>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => onLoad(toLoad)}
+            disabled={loadBlocker !== null || toLoad.length === 0}
+            title={toLoad.length === 0 && !loadBlocker ? 'Both models are loaded with the current settings.' : undefined}
+          >
             {loading ? 'Loading…' : 'Load models'}
           </button>
         </>
       }
     >
       <div className={styles.modelGrid}>
-        <ModelCard name={MODEL_NAMES.parakeet} displayName="Speech recognition" model={models.parakeet} pending={pending.parakeet} />
-        <ModelCard name={MODEL_NAMES.kokoro} displayName="Speech synthesis" model={models.kokoro} pending={pending.kokoro} />
+        {MODEL_KEYS.map((k) => (
+          <ModelCard
+            key={k}
+            name={MODEL_NAMES[k]}
+            displayName={k === 'parakeet' ? 'Speech recognition' : 'Speech synthesis'}
+            model={models[k]}
+            pending={pending[k]}
+            loadBlocker={loadBlocker}
+            onLoad={() => onLoad([k])}
+          />
+        ))}
       </div>
     </Panel>
   );
 });
 
-function ModelCard({ name, displayName, model, pending }: { name: string; displayName: string; model: AnyModelState; pending: string[] }) {
+function ModelCard({
+  name,
+  displayName,
+  model,
+  pending,
+  loadBlocker,
+  onLoad,
+}: {
+  name: string;
+  displayName: string;
+  model: AnyModelState;
+  pending: string[];
+  loadBlocker: string | null;
+  onLoad: () => void;
+}) {
   const { phase, record } = model;
+  const verb = phase === 'ready' ? 'Reload' : 'Load';
   return (
     <article className={styles.modelCard} aria-label={name}>
       <header className={styles.modelHeader}>
         <h3 className={styles.modelName}>{name}</h3>
         <span className={styles.modelDisplayName}>{displayName}</span>
         <PhaseChip model={model} pending={pending.length > 0} />
+        {needsLoad(model, pending) && (
+          <button
+            type="button"
+            className={styles.modelLoadButton}
+            onClick={onLoad}
+            disabled={loadBlocker !== null}
+            title={phase === 'loading' ? undefined : (loadBlocker ?? undefined)}
+            aria-label={phase === 'loading' ? undefined : `${verb} the ${name.toLowerCase()}`}
+          >
+            {phase === 'loading' ? 'Loading…' : verb}
+          </button>
+        )}
       </header>
       {phase === 'loading' && <LoadProgressView name={name} model={model} />}
       {model.error && (
