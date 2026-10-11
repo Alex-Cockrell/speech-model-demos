@@ -19,7 +19,7 @@
  * 'auto' resolves to WASM, and 'webgpu' (the app-wide "Force WebGPU" setting, meant for the benchmark models)
  * also runs on WASM, with the reason in the load record's fallbackReason, rather than failing the meeting.
  */
-import { mainTimeOriginForWorkers, now } from '@local-speech/core';
+import { mainTimeOriginForWorkers, now } from '@localspeech/core';
 import { ORT_ASSETS, SPEAKER_MODEL } from '../config';
 import type {
   AudioSourceKind,

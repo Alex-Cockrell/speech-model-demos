@@ -6,7 +6,7 @@
  * at 16 kHz. Firefox refuses to connect a mic to a context whose rate differs from the device's, so there we run
  * at the native rate and resample with StreamingResampler.
  */
-import { now } from '@local-speech/core';
+import { now } from '@localspeech/core';
 import type { MicInfo } from './types.js';
 import { ASR_SAMPLE_RATE } from './protocol.js';
 import { StreamingResampler } from './resampler.js';

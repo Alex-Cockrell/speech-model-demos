@@ -9,11 +9,11 @@
  * parakeet.js's own getParakeetModel()/fromHub() is deliberately not used: it always calls the
  * huggingface.co tree API (breaks the mirror and locked-down networks) and caches in IndexedDB.
  */
-import { HUGGING_FACE_BASE_URL, modelFileUrl } from '@local-speech/core';
+import { HUGGING_FACE_BASE_URL, modelFileUrl } from '@localspeech/core';
 import { PARAKEET_MODEL } from './models.js';
 import { describeError } from './protocol.js';
 
-/** Listed in MODEL_CACHE_NAMES (cache.ts in @local-speech/core) so "clear model caches" removes it. */
+/** Listed in MODEL_CACHE_NAMES (cache.ts in @localspeech/core) so "clear model caches" removes it. */
 export const PARAKEET_CACHE_NAME = 'speech-poc-models-v1';
 
 export function canonicalModelUrl(file: string): string {

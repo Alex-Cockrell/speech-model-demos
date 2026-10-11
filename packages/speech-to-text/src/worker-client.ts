@@ -1,5 +1,5 @@
 /** Main-thread side of asr.worker.ts: one Worker, request/response bookkeeping, failure handling. */
-import type { LoadProgress } from '@local-speech/core';
+import type { LoadProgress } from '@localspeech/core';
 import type { LoadRequest, LoadResult, MainToWorker, PassKind, PassResult, WorkerToMain } from './protocol.js';
 import type { PassRunner } from './transcriber.js';
 

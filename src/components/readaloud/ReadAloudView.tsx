@@ -14,10 +14,10 @@ import {
 } from 'react';
 import { errorMessage } from '@/lib/benchmark/errors';
 import { SPEED_RANGE, VOICES, voiceName } from '@/lib/benchmark/settings';
-import { now } from '@local-speech/core';
-import { MAX_SOURCE_CHARS, detectFormat, formatForFileName, parseDocument, type FormatChoice, type ReadDocument } from '@local-speech/text-to-speech';
-import { planReading, type ReadingPlan, type SplitMode } from '@local-speech/text-to-speech';
-import { DEFAULT_READ_AHEAD_SEC, ReadAloudSession, type ReaderPosition, type ReaderSnapshot } from '@local-speech/text-to-speech';
+import { now } from '@localspeech/core';
+import { MAX_SOURCE_CHARS, detectFormat, formatForFileName, parseDocument, type FormatChoice, type ReadDocument } from '@localspeech/text-to-speech';
+import { planReading, type ReadingPlan, type SplitMode } from '@localspeech/text-to-speech';
+import { DEFAULT_READ_AHEAD_SEC, ReadAloudSession, type ReaderPosition, type ReaderSnapshot } from '@localspeech/text-to-speech';
 import type { PipelineController } from '../pipeline/controller';
 import { pendingChanges } from '../pipeline/selectors';
 import { isRunActive, loadBlocker, type ModelState, type PipelineSnapshot } from '../pipeline/state';

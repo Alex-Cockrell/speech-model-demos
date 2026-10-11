@@ -5,8 +5,8 @@
  * Stats and levels are driven by the audio callbacks (plus a 1 s timer for when no audio flows), not by timers
  * alone: Chrome throttles timers in background tabs, and the meeting tab usually is one while the call runs.
  */
-import { now } from '@local-speech/core';
-import { summarize } from '@local-speech/core';
+import { now } from '@localspeech/core';
+import { summarize } from '@localspeech/core';
 import type { AsrSettings, AudioSourceKind, SessionStats } from './types.js';
 import { AudioCapture, openMicrophone, stopStreams, type CaptureInput } from './capture.js';
 import { meanSquare } from './pcm.js';

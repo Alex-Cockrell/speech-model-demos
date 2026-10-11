@@ -2,7 +2,7 @@
 // Mirrors the pinned Parakeet, Kokoro and speaker-embedding model files from Hugging Face into a Cloudflare R2 bucket
 // (spec §15, option B). Each file streams from its pinned Hugging Face URL straight into an R2
 // multipart upload; nothing is staged on disk. Object keys use the Hugging Face layout
-// {repo}/resolve/{revision}/{file}, so the app only swaps the base URL (modelFileUrl in @local-speech/core).
+// {repo}/resolve/{revision}/{file}, so the app only swaps the base URL (modelFileUrl in @localspeech/core).
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';

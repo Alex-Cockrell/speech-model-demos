@@ -6,17 +6,17 @@
  * (no stale React closures). useSpeechPipeline subscribes to it with useSyncExternalStore.
  */
 import { assessAccuracy } from '@/lib/accuracy/wer';
-import { AsrEngine } from '@local-speech/speech-to-text';
+import { AsrEngine } from '@localspeech/speech-to-text';
 import { errorMessage } from '@/lib/benchmark/errors';
 import { HISTORY_LIMIT, readHistory, readSettings, removeHistory, writeHistory, writeSettings } from '@/lib/benchmark/persist';
 import { findPhrase } from '@/lib/benchmark/phrases';
 import { buildBenchmarkRecord, newRunId } from '@/lib/benchmark/record';
 import { resolveModelSource, sanitizeSettings, type AppSettings } from '@/lib/benchmark/settings';
-import { now } from '@local-speech/core';
+import { now } from '@localspeech/core';
 import { HUGGING_FACE_BASE_URL } from '@/lib/config';
-import { detectEnvironment } from '@local-speech/core';
-import { clearModelCaches, createPageNetworkMonitor, getStorageInfo, requestPersistentStorage } from '@local-speech/core';
-import { TtsEngine } from '@local-speech/text-to-speech';
+import { detectEnvironment } from '@localspeech/core';
+import { clearModelCaches, createPageNetworkMonitor, getStorageInfo, requestPersistentStorage } from '@localspeech/core';
+import { TtsEngine } from '@localspeech/text-to-speech';
 import type {
   AccuracyResult,
   AsrRunMetrics,

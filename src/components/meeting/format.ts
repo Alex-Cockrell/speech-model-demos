@@ -1,5 +1,5 @@
 /** Display helpers for the meeting mode. */
-import { resolveEncoderQuant } from '@local-speech/speech-to-text';
+import { resolveEncoderQuant } from '@localspeech/speech-to-text';
 import type { AppSettings } from '@/lib/benchmark/settings';
 import type { EnvironmentInfo, ParakeetQuant, ResolvedBackend } from '@/lib/types';
 import { BACKEND_LABEL, DASH, fmtBytes } from '../format';

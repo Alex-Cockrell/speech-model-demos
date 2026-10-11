@@ -1,6 +1,6 @@
 import type { AsrSettings } from './types.js';
 
-/** Pinned model artifacts (see modelFileUrl in @local-speech/core for the URL layout). */
+/** Pinned model artifacts (see modelFileUrl in @localspeech/core for the URL layout). */
 export const PARAKEET_MODEL = {
   displayName: 'NVIDIA Parakeet TDT 0.6B v3',
   upstream: 'nvidia/parakeet-tdt-0.6b-v3',

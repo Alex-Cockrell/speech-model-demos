@@ -11,7 +11,7 @@
  *
  * Nothing here imports kokoro-js, so the main thread can import it without bundling the model library.
  */
-import type { DownloadMetrics, LoadKind, LoadProgress, ModelSource, ResolvedBackend, WasmRuntimeInfo } from '@local-speech/core';
+import type { DownloadMetrics, LoadKind, LoadProgress, ModelSource, ResolvedBackend, WasmRuntimeInfo } from '@localspeech/core';
 import type { KokoroDtype, TtsChunkRecord, TtsSettings } from './types.js';
 
 export interface LoadRequest {

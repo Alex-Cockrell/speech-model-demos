@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { errorMessage } from '@/lib/benchmark/errors';
-import { now } from '@local-speech/core';
+import { now } from '@localspeech/core';
 import { copyText } from './clipboard';
 import { fmtMs } from './format';
 import styles from './ui.module.css';

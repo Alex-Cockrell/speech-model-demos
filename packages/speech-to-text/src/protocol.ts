@@ -7,7 +7,7 @@
  * Any time:                                       main 'count' → worker 'count' (fetch() calls so far).
  * Unhandled promise rejections inside the worker arrive as 'unexpectedError'.
  */
-import type { DownloadMetrics, LoadKind, LoadProgress, ModelSource, ResolvedBackend, WasmRuntimeInfo } from '@local-speech/core';
+import type { DownloadMetrics, LoadKind, LoadProgress, ModelSource, ResolvedBackend, WasmRuntimeInfo } from '@localspeech/core';
 import type { ParakeetQuant } from './types.js';
 
 export const ASR_SAMPLE_RATE = 16000;

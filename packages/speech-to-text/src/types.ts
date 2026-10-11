@@ -1,5 +1,5 @@
-/** Speech-to-text contracts. Timestamp conventions: see @local-speech/core's types. */
-import type { IntervalStats } from '@local-speech/core';
+/** Speech-to-text contracts. Timestamp conventions: see @localspeech/core's types. */
+import type { IntervalStats } from '@localspeech/core';
 
 // ---------------------------------------------------------------------------
 // ASR (spec §9)

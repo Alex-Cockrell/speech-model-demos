@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReaderPosition, ReaderSnapshot } from '@local-speech/text-to-speech';
+import type { ReaderPosition, ReaderSnapshot } from '@localspeech/text-to-speech';
 import type { ModelLoadRecord } from '@/lib/types';
 import { BACKEND_LABEL, DASH, fmtBytes, fmtMs, fmtRtf } from '../format';
 import { APP_INFO } from '@/lib/config';

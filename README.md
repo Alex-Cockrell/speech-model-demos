@@ -23,9 +23,9 @@ The speech engines live in npm workspace packages, which this app consumes like 
 
 | Package | Contents |
 | --- | --- |
-| `packages/core` (`@local-speech/core`) | Shared plumbing: fetch instrumentation and mirror rewriting, model caches, environment detection, timing |
-| `packages/speech-to-text` (`@local-speech/speech-to-text`) | Parakeet ASR: capture, segmentation, live transcription, worker |
-| `packages/text-to-speech` (`@local-speech/text-to-speech`) | Kokoro TTS: synthesis worker, read-aloud playback, markdown-to-speech |
+| `packages/core` (`@localspeech/core`) | Shared plumbing: fetch instrumentation and mirror rewriting, model caches, environment detection, timing |
+| `packages/speech-to-text` (`@localspeech/speech-to-text`) | Parakeet ASR: capture, segmentation, live transcription, worker |
+| `packages/text-to-speech` (`@localspeech/text-to-speech`) | Kokoro TTS: synthesis worker, read-aloud playback, markdown-to-speech |
 
 The app (`src/`) keeps the UI, benchmark, meeting mode, speaker labels and transcripts. Packages compile with `tsc` to `packages/*/dist` (gitignored), which `dev`, `build` and `typecheck` do first.
 

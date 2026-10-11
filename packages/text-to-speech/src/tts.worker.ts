@@ -7,10 +7,10 @@
 import { env, type ProgressInfo } from '@huggingface/transformers';
 import { KokoroTTS, type GenerateOptions } from 'kokoro-js';
 import { voiceName } from './models.js';
-import { now, setMainTimeOrigin } from '@local-speech/core';
+import { now, setMainTimeOrigin } from '@localspeech/core';
 import { KOKORO_MODEL, KOKORO_RUNTIME } from './models.js';
-import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@local-speech/core';
-import type { DownloadMetrics, FileFetchRecord, LoadProgress, WasmRuntimeInfo } from '@local-speech/core';
+import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@localspeech/core';
+import type { DownloadMetrics, FileFetchRecord, LoadProgress, WasmRuntimeInfo } from '@localspeech/core';
 import {
   errorMessage,
   type ChunkAudioCheck,

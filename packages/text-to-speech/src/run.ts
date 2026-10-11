@@ -1,8 +1,8 @@
 /**
  * One speak() run on the main thread: plays worker chunks as they arrive and assembles TtsRunMetrics.
  */
-import { now, span } from '@local-speech/core';
-import { intervalStats } from '@local-speech/core';
+import { now, span } from '@localspeech/core';
+import { intervalStats } from '@localspeech/core';
 import type { TtsChunkRecord, TtsRunMetrics, TtsSettings } from './types.js';
 import type { TtsSpeakCallbacks } from './engine.js';
 import { PlaybackQueue, audioOutputInfo, contextTimeToMainClock } from './playback.js';

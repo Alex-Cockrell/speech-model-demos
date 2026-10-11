@@ -5,20 +5,20 @@
  * --------------------
  * Every numeric field named `...At`, `...Start`, `...Stop`, `...Ready` or `...Complete` is a
  * main-thread `performance.now()` value in milliseconds. Code running in a Web Worker must use
- * `now()` from `@local-speech/core` (after calling `setMainTimeOrigin()`), which already returns
+ * `now()` from `@localspeech/core` (after calling `setMainTimeOrigin()`), which already returns
  * main-thread clock values. Fields ending in `Ms` are durations in milliseconds.
  *
  * `null` means "did not happen / could not be measured". Never use 0 as a sentinel.
  */
 
-export type * from '@local-speech/core';
-export type * from '@local-speech/speech-to-text';
-export type * from '@local-speech/text-to-speech';
+export type * from '@localspeech/core';
+export type * from '@localspeech/speech-to-text';
+export type * from '@localspeech/text-to-speech';
 
-import type { AudioSourceKind, TranscriptWord } from '@local-speech/speech-to-text';
-import type { AsrRunMetrics, AsrSettings, SessionStats } from '@local-speech/speech-to-text';
-import type { TtsRunMetrics, TtsSettings } from '@local-speech/text-to-speech';
-import type { BackendChoice, EnvironmentInfo, LoadKind, ModelLoadRecord, ModelSource, ResolvedBackend } from '@local-speech/core';
+import type { AudioSourceKind, TranscriptWord } from '@localspeech/speech-to-text';
+import type { AsrRunMetrics, AsrSettings, SessionStats } from '@localspeech/speech-to-text';
+import type { TtsRunMetrics, TtsSettings } from '@localspeech/text-to-speech';
+import type { BackendChoice, EnvironmentInfo, LoadKind, ModelLoadRecord, ModelSource, ResolvedBackend } from '@localspeech/core';
 
 // ---------------------------------------------------------------------------
 // End-to-end, accuracy, environment

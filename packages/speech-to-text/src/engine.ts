@@ -15,9 +15,9 @@
  * nothing load-relevant changed it returns a 'session' record at once. load() is rejected while a recording or
  * session is running. WASM threads 0 (automatic) means hardwareConcurrency − 2 (resolveWasmThreads in protocol.ts).
  */
-import { mainTimeOriginForWorkers, now } from '@local-speech/core';
+import { mainTimeOriginForWorkers, now } from '@localspeech/core';
 import { DEFAULT_ASR_SETTINGS, PARAKEET_LIBRARY_VERSIONS, PARAKEET_RUNTIME, PARAKEET_MODEL } from './models.js';
-import type { BackendChoice, DownloadMetrics, EnvironmentInfo, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend } from '@local-speech/core';
+import type { BackendChoice, DownloadMetrics, EnvironmentInfo, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend } from '@localspeech/core';
 import type { AsrRunMetrics, AsrSettings } from './types.js';
 import { stopStreams } from './capture.js';
 import { LiveSession, type Segmentation } from './live-session.js';

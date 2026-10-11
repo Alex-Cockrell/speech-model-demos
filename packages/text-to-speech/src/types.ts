@@ -1,5 +1,5 @@
-/** Text-to-speech contracts. Timestamp conventions: see @local-speech/core's types. */
-import type { IntervalStats } from '@local-speech/core';
+/** Text-to-speech contracts. Timestamp conventions: see @localspeech/core's types. */
+import type { IntervalStats } from '@localspeech/core';
 
 // ---------------------------------------------------------------------------
 // TTS (spec §10)

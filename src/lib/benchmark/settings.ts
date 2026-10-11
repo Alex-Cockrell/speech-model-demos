@@ -1,5 +1,5 @@
 import { DEFAULT_ASR_SETTINGS, DEFAULT_TTS_SETTINGS, HUGGING_FACE_BASE_URL, NETWORK_LOCKED, defaultModelSource } from '../config';
-import { VOICES } from '@local-speech/text-to-speech';
+import { VOICES } from '@localspeech/text-to-speech';
 import type { AsrSettings, BackendChoice, ModelSource, RunMode, TtsSettings } from '../types';
 import { BENCHMARK_PHRASES, DEFAULT_PHRASE_ID } from './phrases';
 import { TEST_MATRIX } from './testMatrix';
@@ -34,7 +34,7 @@ export const SPEED_RANGE = { min: 0.5, max: 2, step: 0.05 } as const;
 const RUN_MODES: readonly RunMode[] = ['free', 'benchmark'];
 const SOURCE_KINDS: readonly ModelSource['kind'][] = ['huggingface', 'mirror'];
 
-export { VOICES, voiceName } from '@local-speech/text-to-speech';
+export { VOICES, voiceName } from '@localspeech/text-to-speech';
 
 export function defaultSettings(): AppSettings {
   const source = defaultModelSource();

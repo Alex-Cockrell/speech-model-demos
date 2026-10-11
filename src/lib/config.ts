@@ -1,11 +1,11 @@
-import { HUGGING_FACE_BASE_URL } from '@local-speech/core';
-import { PARAKEET_LIBRARY_VERSIONS, PARAKEET_RUNTIME } from '@local-speech/speech-to-text';
-import { KOKORO_LIBRARY_VERSIONS, KOKORO_RUNTIME } from '@local-speech/text-to-speech';
+import { HUGGING_FACE_BASE_URL } from '@localspeech/core';
+import { PARAKEET_LIBRARY_VERSIONS, PARAKEET_RUNTIME } from '@localspeech/speech-to-text';
+import { KOKORO_LIBRARY_VERSIONS, KOKORO_RUNTIME } from '@localspeech/text-to-speech';
 import type { ModelSource } from './types';
 
-export { HUGGING_FACE_BASE_URL, modelFileUrl } from '@local-speech/core';
-export { DEFAULT_ASR_SETTINGS, PARAKEET_MODEL } from '@local-speech/speech-to-text';
-export { DEFAULT_TTS_SETTINGS, KOKORO_MODEL } from '@local-speech/text-to-speech';
+export { HUGGING_FACE_BASE_URL, modelFileUrl } from '@localspeech/core';
+export { DEFAULT_ASR_SETTINGS, PARAKEET_MODEL } from '@localspeech/speech-to-text';
+export { DEFAULT_TTS_SETTINGS, KOKORO_MODEL } from '@localspeech/text-to-speech';
 
 /**
  * Speaker embeddings for the meeting mode's speaker labels: 3D-Speaker CAM++ trained on VoxCeleb2 (7.2M

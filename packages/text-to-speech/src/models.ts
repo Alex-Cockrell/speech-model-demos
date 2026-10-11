@@ -1,6 +1,6 @@
 import type { TtsSettings } from './types.js';
 
-/** Pinned model artifacts (see modelFileUrl in @local-speech/core for the URL layout). */
+/** Pinned model artifacts (see modelFileUrl in @localspeech/core for the URL layout). */
 export const KOKORO_MODEL = {
   displayName: 'Kokoro 82M v1.0 (ONNX)',
   upstream: 'hexgrad/Kokoro-82M',

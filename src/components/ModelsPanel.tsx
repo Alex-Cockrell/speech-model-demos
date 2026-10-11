@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { span } from '@local-speech/core';
+import { span } from '@localspeech/core';
 import type { DownloadMetrics, LoadProgress, ModelKey, ModelLoadRecord } from '@/lib/types';
 import { MODEL_NAMES, type ModelState, type ModelsState } from './pipeline/state';
 import {

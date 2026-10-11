@@ -1,6 +1,6 @@
 /** Worker-only helper: pre-fetches a Kokoro voice into the cache kokoro-js reads from. */
 import { voiceName } from './models.js';
-import { HUGGING_FACE_BASE_URL } from '@local-speech/core';
+import { HUGGING_FACE_BASE_URL } from '@localspeech/core';
 import { KOKORO_MODEL } from './models.js';
 
 /** Cache API name kokoro-js 1.2.1 stores voices in (also listed in MODEL_CACHE_NAMES for clearing). */

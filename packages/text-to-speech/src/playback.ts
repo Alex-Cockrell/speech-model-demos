@@ -2,7 +2,7 @@
  * Gapless Web Audio playback of streamed PCM chunks, with per-chunk continuity measurements (spec §10).
  * Main thread only.
  */
-import { now } from '@local-speech/core';
+import { now } from '@localspeech/core';
 import type { TtsChunkRecord, TtsRunMetrics } from './types.js';
 import { applySpeechLoudness, speechOutput } from './output.js';
 

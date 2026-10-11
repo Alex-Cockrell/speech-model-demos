@@ -1,8 +1,8 @@
 'use client';
 
 import { voiceName } from '@/lib/benchmark/settings';
-import { span } from '@local-speech/core';
-import { intervalStats } from '@local-speech/core';
+import { span } from '@localspeech/core';
+import { intervalStats } from '@localspeech/core';
 import type { EndToEndMetrics, IntervalStats, PartialUpdate } from '@/lib/types';
 import type { RunState } from './pipeline/state';
 import { fmtInt, fmtMs, fmtOffset, fmtRtf, msParts } from './format';

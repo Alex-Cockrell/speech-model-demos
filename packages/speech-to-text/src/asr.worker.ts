@@ -6,10 +6,10 @@
  */
 import * as ort from 'onnxruntime-web';
 import { ParakeetModel, type TranscribeResult } from 'parakeet.js';
-import { now, setMainTimeOrigin } from '@local-speech/core';
+import { now, setMainTimeOrigin } from '@localspeech/core';
 import { PARAKEET_RUNTIME } from './models.js';
-import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@local-speech/core';
-import type { LoadProgress, ModelSource, WasmRuntimeInfo } from '@local-speech/core';
+import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@localspeech/core';
+import type { LoadProgress, ModelSource, WasmRuntimeInfo } from '@localspeech/core';
 import type { ParakeetQuant } from './types.js';
 import { expectedFileList, parakeetFiles, type ParakeetFiles } from './model-files.js';
 import { canonicalModelUrl, openModelCache, retrieveModelFile, type ByteProgress } from './model-store.js';

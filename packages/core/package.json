@@ -1,8 +1,8 @@
 {
-  "name": "@local-speech/core",
+  "name": "@localspeech/core",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared plumbing for @local-speech packages: model download instrumentation, caches, environment detection.",
+  "description": "Shared plumbing for @localspeech packages: model download instrumentation, caches, environment detection.",
   "license": "MIT",
   "author": "Alex Cockrell",
   "type": "module",

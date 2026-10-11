@@ -6,7 +6,7 @@
  *   1. rewrite https://huggingface.co/{repo}/resolve/{anyRev}/{file} for pinned repos to
  *      {source.baseUrl}/{repo}/resolve/{pinnedRev}/{file} (pins revisions + enables the R2 mirror);
  *   2. record per-request timing (request start, headers, first body byte, completion) and body
- *      bytes as the body streams through — timestamps via now() from @local-speech/core's clock;
+ *      bytes as the body streams through — timestamps via now() from @localspeech/core's clock;
  *   3. count every request (privacy check: no fetches should happen during a speech run).
  *
  * blob: and data: URLs (e.g. parakeet.js re-reading the blobs it cached in IndexedDB) are not network

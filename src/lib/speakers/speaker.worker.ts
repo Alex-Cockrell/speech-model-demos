@@ -7,9 +7,9 @@
  * ORT run → averaged, L2-normalised embedding. Runs are serialised: an ORT session must not run concurrently.
  */
 import * as ort from 'onnxruntime-web';
-import { now, setMainTimeOrigin } from '@local-speech/core';
+import { now, setMainTimeOrigin } from '@localspeech/core';
 import { ORT_ASSETS, SPEAKER_MODEL } from '../config';
-import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@local-speech/core';
+import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@localspeech/core';
 import type { LoadProgress, ModelSource, WasmRuntimeInfo } from '../types';
 import { poolEmbeddings, prepareEmbeddingInput } from './embed';
 import { Fbank } from './fbank';

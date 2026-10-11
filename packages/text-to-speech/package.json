@@ -1,5 +1,5 @@
 {
-  "name": "@local-speech/text-to-speech",
+  "name": "@localspeech/text-to-speech",
   "version": "0.1.0",
   "private": true,
   "description": "Streaming text-to-speech that runs entirely in the browser (Kokoro 82M on WebGPU or WASM).",
@@ -12,5 +12,5 @@
   },
   "files": ["dist", "src", "README.md", "LICENSE"],
   "scripts": { "build": "tsc -b" },
-  "dependencies": { "@local-speech/core": "0.1.0", "@huggingface/transformers": "3.8.1", "kokoro-js": "1.2.1" }
+  "dependencies": { "@localspeech/core": "0.1.0", "@huggingface/transformers": "3.8.1", "kokoro-js": "1.2.1" }
 }

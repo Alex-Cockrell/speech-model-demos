@@ -1,5 +1,5 @@
 import { PARAKEET_MODEL } from './models.js';
-import type { EnvironmentInfo, ResolvedBackend } from '@local-speech/core';
+import type { EnvironmentInfo, ResolvedBackend } from '@localspeech/core';
 import type { AsrSettings, ParakeetQuant } from './types.js';
 
 /** parakeet.js always runs the decoder/joiner on WASM, so the int8 file is used for every backend. */

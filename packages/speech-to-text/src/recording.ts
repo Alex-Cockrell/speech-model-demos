@@ -7,8 +7,8 @@
  * recording is then transcribed once more and that becomes the final text (the segments text stays in
  * streamingText for comparison). Only 'full' keeps the whole recording in memory.
  */
-import { now, span } from '@local-speech/core';
-import { intervalStats } from '@local-speech/core';
+import { now, span } from '@localspeech/core';
+import { intervalStats } from '@localspeech/core';
 import type { AsrRunMetrics, AsrSettings, MicInfo, PartialUpdate } from './types.js';
 import { AudioCapture, openMicrophone, stopStreams, type CaptureInput } from './capture.js';
 import { meanSquare, PcmBuffer } from './pcm.js';

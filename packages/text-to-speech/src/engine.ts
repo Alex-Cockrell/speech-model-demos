@@ -8,9 +8,9 @@
  *
  * Worker protocol: ./protocol.ts. Playback scheduling and continuity definitions: ./playback.ts.
  */
-import { mainTimeOriginForWorkers, now } from '@local-speech/core';
+import { mainTimeOriginForWorkers, now } from '@localspeech/core';
 import { KOKORO_MODEL, KOKORO_LIBRARY_VERSIONS, KOKORO_RUNTIME } from './models.js';
-import type { BackendChoice, DownloadMetrics, EnvironmentInfo, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend } from '@local-speech/core';
+import type { BackendChoice, DownloadMetrics, EnvironmentInfo, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend } from '@localspeech/core';
 import type { KokoroDtype, TtsChunkRecord, TtsRunMetrics, TtsSettings } from './types.js';
 import {
   errorMessage,

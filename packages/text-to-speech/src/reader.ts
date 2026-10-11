@@ -24,7 +24,7 @@
  *   silence  the gap inserted before a stalled piece (what the listener heard as a pause).
  *   buffered scheduled audio ahead of the playhead when a piece arrived (min/max exclude segment starts).
  */
-import { now } from '@local-speech/core';
+import { now } from '@localspeech/core';
 import type { SynthesisJob, SynthesisOptions, SynthesisResult } from './engine.js';
 import { applySpeechLoudness, speechOutput } from './output.js';
 import { SAFETY_LEAD_SEC, contextTimeToMainClock } from './playback.js';
