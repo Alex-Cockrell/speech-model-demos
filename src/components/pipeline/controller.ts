@@ -104,6 +104,15 @@ function requestCount(fn: () => Promise<number>): Promise<number> {
 
 const MICROPHONE_ERRORS = new Set(['NotAllowedError', 'NotFoundError', 'NotReadableError', 'OverconstrainedError', 'SecurityError']);
 
+/**
+ * The backend setting lives on the Benchmark tab but applies to every mode, and only Auto falls back to WASM. A
+ * WebGPU failure under the forced setting says where to change it, since the mode that failed doesn't show it.
+ */
+function withBackendHint(message: string, backend: LoadConfig<unknown>['backend']): string {
+  if (backend !== 'webgpu' || !/webgpu/i.test(message)) return message;
+  return `${message} The backend is set to WebGPU (Benchmark tab → Settings → Backend); set it to Auto to fall back to WASM where WebGPU is unavailable.`;
+}
+
 function isMicrophoneError(e: unknown): boolean {
   return typeof e === 'object' && e !== null && MICROPHONE_ERRORS.has((e as { name?: string }).name ?? '');
 }
@@ -429,7 +438,7 @@ export class PipelineController {
       });
     } catch (e) {
       sink.close();
-      const message = errorMessage(e);
+      const message = withBackendHint(errorMessage(e), config.backend);
       if (engine.isLoaded && previous.applied) {
         this.patchModel(key, {
           phase: 'ready',
