@@ -17,6 +17,18 @@ Text → TTS worker: Kokoro 82M (kokoro-js / transformers.js) → Web Audio play
 All models run on ONNX Runtime Web (WebGPU or multithreaded WASM).
 ```
 
+## Code layout
+
+The speech engines live in npm workspace packages, which this app consumes like any other site would (they are being prepared for publishing):
+
+| Package | Contents |
+| --- | --- |
+| `packages/core` (`@local-speech/core`) | Shared plumbing: fetch instrumentation and mirror rewriting, model caches, environment detection, timing |
+| `packages/speech-to-text` (`@local-speech/speech-to-text`) | Parakeet ASR: capture, segmentation, live transcription, worker |
+| `packages/text-to-speech` (`@local-speech/text-to-speech`) | Kokoro TTS: synthesis worker, read-aloud playback, markdown-to-speech |
+
+The app (`src/`) keeps the UI, benchmark, meeting mode, speaker labels and transcripts. Packages compile with `tsc` to `packages/*/dist` (gitignored), which `dev`, `build` and `typecheck` do first.
+
 ## Quick start
 
 Needs Node.js 20.9+ (Cloudflare builds use 22, pinned in `.node-version`) and a current Chrome or Edge for WebGPU.
@@ -124,7 +136,7 @@ Expect `same-origin` and `require-corp`, then `application/wasm` and the immutab
 
 ## Model hosting
 
-Model files are pinned to commit SHAs in `src/lib/config.ts`. The inference workers rewrite every `https://huggingface.co/{repo}/resolve/{any revision}/{file}` request for those repos to the pinned revision on the selected source (`src/lib/net/instrument.ts`), so Hugging Face and the mirror serve byte-identical files and share browser cache entries.
+Model files are pinned to commit SHAs in `packages/*/src/models.ts` (the speaker model in `src/lib/config.ts`). The inference workers rewrite every `https://huggingface.co/{repo}/resolve/{any revision}/{file}` request for those repos to the pinned revision on the selected source (`packages/core/src/instrument.ts`), so Hugging Face and the mirror serve byte-identical files and share browser cache entries.
 
 ### Hugging Face (default)
 
@@ -219,9 +231,11 @@ Use 16-bit PCM WAV files. Sharing a real tab that plays audio doesn't work for a
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Copy the ONNX Runtime files, start the cross-origin isolated dev server on :3000 |
-| `npm run build` | Copy the ONNX Runtime files, static export to `out/` |
+| `npm run dev` | Build the packages, copy the ONNX Runtime files, start the cross-origin isolated dev server on :3000 |
+| `npm run dev:packages` | Rebuild the packages on change (run next to `npm run dev` while editing `packages/`) |
+| `npm run build` | Build the packages, copy the ONNX Runtime files, static export to `out/` |
 | `npm run preview` | Serve `out/` with Cloudflare's headers and MIME types |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run copy-ort-assets` | Copy the ONNX Runtime files into `public/ort/`, checking versions against `ORT_ASSETS` in `src/lib/config.ts` |
+| `npm run typecheck` | Build the packages, then `tsc --noEmit` for the app |
+| `npm run audit:prod` | Fail on any high or critical advisory in production dependencies (also run by CI) |
+| `npm run copy-ort-assets` | Copy the ONNX Runtime files into `public/ort/`, checking versions against `PARAKEET_RUNTIME` / `KOKORO_RUNTIME` in `packages/*/src/models.ts` |
 | `npm run mirror-models -- [options]` | Mirror the pinned model files to R2, or `--verify` a mirror (see `--help`) |

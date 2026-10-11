@@ -22,14 +22,14 @@ import type {
   SessionOptions,
   SessionSourceInput,
   TranscriptionSession,
-} from '@/lib/asr/session';
+} from '@local-speech/speech-to-text';
 import { errorMessage } from '@/lib/benchmark/errors';
 import { newRunId, summarizeModel } from '@/lib/benchmark/record';
 import { resolveModelSource } from '@/lib/benchmark/settings';
-import { now } from '@/lib/clock';
+import { now } from '@local-speech/core';
 import { APP_INFO } from '@/lib/config';
 import type { SpeakerLoadOptions, SpeakerSession } from '@/lib/speakers/engine';
-import { summarize } from '@/lib/stats';
+import { summarize } from '@local-speech/core';
 import { detectEcho, overlapsWithin } from '@/lib/transcripts/echo';
 import {
   addSegment,

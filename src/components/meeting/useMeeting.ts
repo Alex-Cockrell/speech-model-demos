@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { requestSystemAudio } from '@/lib/asr/system-audio';
-import { requestPersistentStorage } from '@/lib/net/cache';
+import { requestSystemAudio } from '@local-speech/speech-to-text';
+import { requestPersistentStorage } from '@local-speech/core';
 import { SpeakerEngine } from '@/lib/speakers/engine';
 import { createIndexedDbTranscriptStore } from '@/lib/transcripts/store';
 import type { PipelineController } from '../pipeline/controller';

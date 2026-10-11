@@ -1,0 +1,16 @@
+{
+  "name": "@local-speech/speech-to-text",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live speech-to-text that runs entirely in the browser (Parakeet TDT v3 on WebGPU or WASM).",
+  "license": "MIT",
+  "author": "Alex Cockrell",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "scripts": { "build": "tsc -b" },
+  "dependencies": { "@local-speech/core": "0.1.0", "onnxruntime-web": "1.24.1", "parakeet.js": "1.4.4" }
+}

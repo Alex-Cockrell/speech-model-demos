@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { MODEL_CACHE_NAMES, MODEL_IDB_NAMES, modelStoreLabel } from '@/lib/net/cache';
+import { MODEL_CACHE_NAMES, MODEL_IDB_NAMES, modelStoreLabel } from '@local-speech/core';
 import type { StorageInfo } from '@/lib/types';
 import type { CacheClearResult, PersistRequestResult } from './pipeline/state';
 import { DASH, fmtBytes, fmtClock } from './format';

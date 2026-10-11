@@ -1,5 +1,5 @@
 /** Assembly of the per-run benchmark record (spec §14). */
-import { span } from '../clock';
+import { span } from '@local-speech/core';
 import { APP_INFO } from '../config';
 import type {
   AccuracyResult,

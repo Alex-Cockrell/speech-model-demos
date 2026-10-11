@@ -2,19 +2,20 @@
 // Mirrors the pinned Parakeet, Kokoro and speaker-embedding model files from Hugging Face into a Cloudflare R2 bucket
 // (spec §15, option B). Each file streams from its pinned Hugging Face URL straight into an R2
 // multipart upload; nothing is staged on disk. Object keys use the Hugging Face layout
-// {repo}/resolve/{revision}/{file}, so the app only swaps the base URL (modelFileUrl in src/lib/config.ts).
+// {repo}/resolve/{revision}/{file}, so the app only swaps the base URL (modelFileUrl in @local-speech/core).
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
-// What the app can load, at the revisions pinned in src/lib/config.ts (PARAKEET_MODEL, KOKORO_MODEL, SPEAKER_MODEL).
-// Keep the two in sync: a revision change here and in config.ts means re-running this script.
+// What the app can load, at the revisions pinned in packages/*/src/models.ts (PARAKEET_MODEL, KOKORO_MODEL) and src/lib/config.ts (SPEAKER_MODEL).
+// Keep them in sync: a revision change there means updating MANIFEST and re-running this script.
 // VOICES must cover the voice picker (VOICES in src/lib/benchmark/settings.ts); 0.5 MB each.
 const VOICES = ['af_heart', 'am_michael'];
 const MANIFEST = [
   {
     configName: 'PARAKEET_MODEL',
+    configFile: 'packages/speech-to-text/src/models.ts',
     repo: 'ysdede/parakeet-tdt-0.6b-v3-onnx',
     revision: 'f88260fa0777fe0868dda6df85d1a98f012a4a7a',
     files: ['encoder-model.int8.onnx', 'encoder-model.fp16.onnx', 'decoder_joint-model.int8.onnx', 'vocab.txt'],
@@ -23,6 +24,7 @@ const MANIFEST = [
   },
   {
     configName: 'KOKORO_MODEL',
+    configFile: 'packages/text-to-speech/src/models.ts',
     repo: 'onnx-community/Kokoro-82M-v1.0-ONNX',
     revision: '1939ad2a8e416c0acfeecc08a694d14ef25f2231',
     files: [
@@ -39,6 +41,7 @@ const MANIFEST = [
   {
     // Meeting mode speaker labels (CAM++); one 29.6 MB file of a repo that holds many other models.
     configName: 'SPEAKER_MODEL',
+    configFile: 'src/lib/config.ts',
     repo: 'csukuangfj/speaker-embedding-models',
     revision: '0743f301363dec56491a490f6d6cbc9d67f9a3bf',
     files: ['3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx'],
@@ -150,18 +153,18 @@ function parseArgs(args) {
   return opts;
 }
 
-/** Fails when src/lib/config.ts pins a different repo/revision than this manifest (the mirror would 404). */
+/** Fails when the code pins a different repo/revision than this manifest (the mirror would 404). */
 function checkManifestAgainstConfig() {
-  const configPath = join(ROOT, 'src/lib/config.ts');
-  if (!existsSync(configPath)) return;
-  const source = readFileSync(configPath, 'utf8');
   for (const model of MANIFEST) {
+    const configPath = join(ROOT, model.configFile);
+    if (!existsSync(configPath)) continue;
+    const source = readFileSync(configPath, 'utf8');
     const block = new RegExp(`export const ${model.configName} = \\{([\\s\\S]*?)\\n\\}`).exec(source)?.[1] ?? '';
     const repo = /\brepo:\s*'([^']+)'/.exec(block)?.[1];
     const revision = /\brevision:\s*'([^']+)'/.exec(block)?.[1];
     if (repo !== model.repo || revision !== model.revision) {
       throw new Error(
-        `src/lib/config.ts ${model.configName} pins ${repo}@${revision} but this script mirrors ${model.repo}@${model.revision}. ` +
+        `${model.configFile} ${model.configName} pins ${repo}@${revision} but this script mirrors ${model.repo}@${model.revision}. ` +
           'Update MANIFEST in scripts/mirror-models-to-r2.mjs.',
       );
     }

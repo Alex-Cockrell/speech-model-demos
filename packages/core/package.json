@@ -1,0 +1,16 @@
+{
+  "name": "@local-speech/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared plumbing for @local-speech packages: model download instrumentation, caches, environment detection.",
+  "license": "MIT",
+  "author": "Alex Cockrell",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "scripts": { "build": "tsc -b" },
+  "dependencies": {}
+}

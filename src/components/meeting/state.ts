@@ -1,5 +1,5 @@
 /** Meeting-mode state shared by the controller and the meeting panels, and what each state allows. */
-import type { LiveSessionStats } from '@/lib/asr/session';
+import type { LiveSessionStats } from '@local-speech/speech-to-text';
 import type { TranscriptDoc } from '@/lib/transcripts/model';
 import type { TranscriptStatus, TranscriptSummary } from '@/lib/transcripts/types';
 import type { AudioSourceKind, LoadProgress, ModelLoadRecord } from '@/lib/types';

@@ -1,8 +1,8 @@
 'use client';
 
 import { memo, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import type { DocBlock } from '@/lib/tts/document';
-import type { PlannedSentence, ReadingPlan } from '@/lib/tts/pieces';
+import type { DocBlock } from '@local-speech/text-to-speech';
+import type { PlannedSentence, ReadingPlan } from '@local-speech/text-to-speech';
 import { cx } from '../ui';
 import styles from './ReadAloud.module.css';
 

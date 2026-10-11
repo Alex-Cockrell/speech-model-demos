@@ -1,4 +1,5 @@
 import { DEFAULT_ASR_SETTINGS, DEFAULT_TTS_SETTINGS, HUGGING_FACE_BASE_URL, NETWORK_LOCKED, defaultModelSource } from '../config';
+import { VOICES } from '@local-speech/text-to-speech';
 import type { AsrSettings, BackendChoice, ModelSource, RunMode, TtsSettings } from '../types';
 import { BENCHMARK_PHRASES, DEFAULT_PHRASE_ID } from './phrases';
 import { TEST_MATRIX } from './testMatrix';
@@ -33,19 +34,7 @@ export const SPEED_RANGE = { min: 0.5, max: 2, step: 0.05 } as const;
 const RUN_MODES: readonly RunMode[] = ['free', 'benchmark'];
 const SOURCE_KINDS: readonly ModelSource['kind'][] = ['huggingface', 'mirror'];
 
-/** `id` is the stored setting value (the model's voice id); `name` and `label` are what the UI shows. */
-export const VOICES: readonly { id: string; name: string; label: string }[] = [
-  { id: 'af_heart', name: 'Heart', label: 'Heart · US female (default)' },
-  { id: 'am_michael', name: 'Michael', label: 'Michael · US male' },
-];
-
-/** Display name for a stored voice id; an id outside VOICES (e.g. from an old record) shows its name part only. */
-export function voiceName(id: string): string {
-  const known = VOICES.find((v) => v.id === id);
-  if (known) return known.name;
-  const name = id.slice(id.indexOf('_') + 1);
-  return name ? name.charAt(0).toUpperCase() + name.slice(1) : id;
-}
+export { VOICES, voiceName } from '@local-speech/text-to-speech';
 
 export function defaultSettings(): AppSettings {
   const source = defaultModelSource();

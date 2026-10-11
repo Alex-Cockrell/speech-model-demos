@@ -21,3 +21,6 @@ model-mirror/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+# compiled workspace packages (npm run build:packages)
+packages/*/dist/
