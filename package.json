@@ -12,7 +12,8 @@
     "preview": "node scripts/serve-out.mjs",
     "typecheck": "tsc --noEmit",
     "copy-ort-assets": "node scripts/copy-ort-assets.mjs",
-    "mirror-models": "node scripts/mirror-models-to-r2.mjs"
+    "mirror-models": "node scripts/mirror-models-to-r2.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
@@ -31,6 +32,9 @@
     "@types/react-dom": "^19.3.0",
     "@webgpu/types": "^0.1.74",
     "typescript": "^5"
+  },
+  "overrides": {
+    "sharp": "^0.35.5"
   },
   "engines": {
     "node": ">=20.9"
