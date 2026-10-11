@@ -12,7 +12,7 @@ export interface TtsSettings {
   dtype: 'auto' | KokoroDtype;
   voice: string;
   speed: number;
-  /** 'sentence' = kokoro-js default splitter; 'clause' also splits on , ; : for more, smaller chunks. */
+  /** 'sentence' = the default sentence splitter (kokoro/splitter.ts); 'clause' also splits on , ; : for more, smaller chunks. */
   split: 'sentence' | 'clause';
   /** ORT WASM threads. 0 = automatic. */
   wasmThreads: number;

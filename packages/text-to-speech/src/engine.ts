@@ -1,7 +1,7 @@
 /**
  * TTS engine (main-thread facade). OWNER: TTS agent.
  *
- * speak(): text → Web Worker running kokoro-js stream() → Float32 audio chunks (24 kHz) →
+ * speak(): text → Web Worker running Kokoro (./kokoro, sentence by sentence) → Float32 audio chunks (24 kHz) →
  * Web Audio scheduled playback with underrun / buffer tracking (the benchmark).
  * synthesize(): one piece of text → one audio buffer, no playback; read aloud (./reader.ts) schedules the
  * pieces itself so it can bound how far generation runs ahead of playback.
@@ -158,7 +158,7 @@ export class TtsEngine {
     blip.start();
   }
 
-  /** Synthesise with kokoro-js streaming and play chunks as they arrive. Resolves after playback completes. */
+  /** Synthesise sentence by sentence and play chunks as they arrive. Resolves after playback completes. */
   async speak(text: string, settings: TtsSettings, callbacks: TtsSpeakCallbacks = {}): Promise<TtsRunMetrics> {
     if (!text.trim()) throw new Error('Nothing to speak: the text is empty.');
     if (!this.isLoaded) throw new Error('The voice model is not loaded; load it first.');
@@ -190,7 +190,7 @@ export class TtsEngine {
   /**
    * Generate one piece of text as one utterance, without playing it. Requests run one at a time in the worker,
    * in order (after a speak() in progress). Read aloud uses this to generate on demand, a bounded distance ahead
-   * of its own playback. The voice need not be the load-time one: kokoro-js fetches a voice it does not have on
+   * of its own playback. The voice need not be the load-time one: the worker fetches a voice it does not have on
    * first use (which needs the network).
    */
   synthesize(text: string, options: SynthesisOptions): SynthesisJob {
@@ -480,8 +480,7 @@ function buildLoadRecord(
     warmupMs: result.warmupMs,
     wasm: result.wasm,
     versions: {
-      'kokoro-js': KOKORO_LIBRARY_VERSIONS['kokoro-js'],
-      '@huggingface/transformers': KOKORO_LIBRARY_VERSIONS['@huggingface/transformers'],
+      phonemizer: KOKORO_LIBRARY_VERSIONS.phonemizer,
       'onnxruntime-web': KOKORO_RUNTIME.version,
     },
   };

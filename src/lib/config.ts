@@ -24,7 +24,7 @@ export const SPEAKER_MODEL = {
 export const ORT_ASSETS = {
   /** onnxruntime-web used by parakeet.js and the speaker model */
   parakeet: PARAKEET_RUNTIME,
-  /** onnxruntime-web bundled with @huggingface/transformers (used by kokoro-js) */
+  /** onnxruntime-web used by the voice model (the same files as parakeet) */
   kokoro: KOKORO_RUNTIME,
 } as const;
 

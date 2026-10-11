@@ -7,12 +7,12 @@
 import * as ort from 'onnxruntime-web';
 import { ParakeetModel, type TranscribeResult } from 'parakeet.js';
 import { now, setMainTimeOrigin } from '@localspeech/core';
-import { PARAKEET_RUNTIME } from './models.js';
+import { PARAKEET_MODEL, PARAKEET_RUNTIME } from './models.js';
 import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@localspeech/core';
 import type { LoadProgress, ModelSource, WasmRuntimeInfo } from '@localspeech/core';
 import type { ParakeetQuant } from './types.js';
 import { expectedFileList, parakeetFiles, type ParakeetFiles } from './model-files.js';
-import { canonicalModelUrl, openModelCache, retrieveModelFile, type ByteProgress } from './model-store.js';
+import { canonicalModelUrl, openModelCache, retrieveModelFile, type ByteProgress } from '@localspeech/core';
 import {
   ASR_SAMPLE_RATE,
   describeError,
@@ -109,7 +109,7 @@ async function loadModel(request: LoadRequest, net: FetchInstrumentation): Promi
   const downloadOrder = [files.tokenizer, files.decoder, files.encoder, ...(files.encoderData ? [files.encoderData] : [])];
   let store = true;
   for (const file of downloadOrder) {
-    const url = canonicalModelUrl(file);
+    const url = canonicalModelUrl(PARAKEET_MODEL.repo, PARAKEET_MODEL.revision, file);
     try {
       const retrieved = await retrieveModelFile(cache, url, downloadProgress(file), store);
       blobs.set(file, retrieved.blob);

@@ -6,7 +6,7 @@ export const KOKORO_MODEL = {
   upstream: 'hexgrad/Kokoro-82M',
   repo: 'onnx-community/Kokoro-82M-v1.0-ONNX',
   revision: '1939ad2a8e416c0acfeecc08a694d14ef25f2231',
-  /** transformers.js dtype → ONNX file inside the repo. */
+  /** Precision → ONNX file inside the repo. */
   dtypeFiles: {
     fp32: 'onnx/model.onnx',
     fp16: 'onnx/model_fp16.onnx',
@@ -14,19 +14,19 @@ export const KOKORO_MODEL = {
     q4: 'onnx/model_q4.onnx',
     q4f16: 'onnx/model_q4f16.onnx',
   },
-  supportFiles: ['config.json', 'tokenizer.json', 'tokenizer_config.json'],
-  /** kokoro-js fetches voices from this repo at revision 'main'; the fetch instrumentation pins it. */
+  /** The phoneme vocabulary (kokoro/tokenizer.ts). */
+  tokenizerFile: 'tokenizer.json',
   voiceFile: (voice: string) => `voices/${voice}.bin`,
 } as const;
 
-/** Self-hosted ONNX Runtime Web files bundled with @huggingface/transformers, which kokoro-js uses. */
-export const KOKORO_RUNTIME = {
-  version: '1.22.0-dev.20250409-89f8206ba4',
-  transformers: '3.8.1',
-  wasmPaths: '/ort/transformers-3.8.1/',
-} as const;
+/**
+ * Self-hosted ONNX Runtime Web files the voice worker loads: the same onnxruntime-web build as speech-to-text, so one
+ * copy serves both (copied into public/ort at build time).
+ */
+export const KOKORO_RUNTIME = { version: '1.24.1', wasmPaths: '/ort/onnxruntime-web-1.24.1/' } as const;
 
-export const KOKORO_LIBRARY_VERSIONS = { 'kokoro-js': '1.2.1', '@huggingface/transformers': '3.8.1' } as const;
+/** phonemizer runs eSpeak NG for the text → phoneme step (kokoro/phonemize.ts, a port of kokoro-js 1.2.1). */
+export const KOKORO_LIBRARY_VERSIONS = { phonemizer: '1.2.1' } as const;
 
 export const DEFAULT_TTS_SETTINGS: TtsSettings = {
   dtype: 'auto',

@@ -9,8 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HELP = `Usage: node scripts/copy-ort-assets.mjs
 
 Copies ort-wasm-simd-threaded.jsep.{mjs,wasm} from
-  node_modules/onnxruntime-web/dist                 (used by parakeet.js)
-  node_modules/@huggingface/transformers/dist       (used by kokoro-js)
+  node_modules/onnxruntime-web/dist                 (used by both the speech-to-text and voice workers)
 into public/<wasmPaths> as defined by PARAKEET_RUNTIME and KOKORO_RUNTIME in packages/*/src/models.ts.
 Fails if the installed package versions no longer match them, or if a file exceeds Cloudflare's 25 MiB per-asset limit.`;
 
@@ -35,30 +34,22 @@ try {
 async function main() {
   const assets = await readOrtAssets();
   const ortVersion = packageVersion('node_modules/onnxruntime-web');
-  const transformersPkg = readJson('node_modules/@huggingface/transformers/package.json');
-  // The .wasm files shipped in transformers' dist/ are built from the onnxruntime-web it depends on.
-  const transformersOrt = transformersPkg.dependencies?.['onnxruntime-web'];
-
   expectEqual('onnxruntime-web', ortVersion, 'PARAKEET_RUNTIME.version', assets.parakeet.version);
-  expectEqual('@huggingface/transformers', transformersPkg.version, 'KOKORO_RUNTIME.transformers', assets.kokoro.transformers);
-  expectEqual('onnxruntime-web required by @huggingface/transformers', transformersOrt, 'KOKORO_RUNTIME.version', assets.kokoro.version);
-  // Both libraries must share one onnxruntime-web / transformers instance with the workers, or the
-  // wasmPaths the workers set would not reach the copy the library actually uses.
+  expectEqual('onnxruntime-web', ortVersion, 'KOKORO_RUNTIME.version', assets.kokoro.version);
+  // Every worker must use this one onnxruntime-web instance, or the wasmPaths it sets would not reach the copy
+  // that actually runs.
   for (const nested of [
     'node_modules/parakeet.js/node_modules/onnxruntime-web',
-    'node_modules/kokoro-js/node_modules/@huggingface/transformers',
     'packages/speech-to-text/node_modules/onnxruntime-web',
-    'packages/text-to-speech/node_modules/@huggingface/transformers',
+    'packages/text-to-speech/node_modules/onnxruntime-web',
   ]) {
     if (existsSync(join(ROOT, nested))) {
       throw new Error(`${nested} exists: a second copy is installed. Align the versions in package.json so npm dedupes it.`);
     }
   }
 
-  const jobs = [
-    { from: 'node_modules/onnxruntime-web/dist', to: assets.parakeet.wasmPaths },
-    { from: 'node_modules/@huggingface/transformers/dist', to: assets.kokoro.wasmPaths },
-  ];
+  // Both models share one runtime, so this is normally a single destination.
+  const jobs = [...new Set([assets.parakeet.wasmPaths, assets.kokoro.wasmPaths])].map((to) => ({ from: 'node_modules/onnxruntime-web/dist', to }));
   for (const job of jobs) {
     if (!job.to.startsWith('/ort/')) {
       throw new Error(`wasmPaths "${job.to}" must live under /ort/ (public/ort/ is the generated, gitignored folder).`);

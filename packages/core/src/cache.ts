@@ -3,16 +3,19 @@
  */
 import type { StorageInfo } from './types.js';
 
-/** Cache API cache names used for model files: transformers.js, kokoro-js voices, our parakeet loader. */
-export const MODEL_CACHE_NAMES = ['transformers-cache', 'kokoro-voices', 'speech-poc-models-v1'] as const;
+/**
+ * Cache API cache names used for model files: ours (MODEL_CACHE_NAME in model-store.ts), plus the two kokoro-js
+ * used for the voice model in earlier versions (moved into ours on load; listed so clearing removes leftovers).
+ */
+export const MODEL_CACHE_NAMES = ['speech-poc-models-v1', 'transformers-cache', 'kokoro-voices'] as const;
 /** IndexedDB databases that may hold model files (parakeet.js's own hub cache, if ever used). */
 export const MODEL_IDB_NAMES = ['parakeet-cache-db'] as const;
 
 /** What each store above holds, as shown in the UI (which never names the underlying models or libraries). */
 const MODEL_STORE_LABELS: Record<string, string> = {
-  'transformers-cache': 'voice model',
-  'kokoro-voices': 'voices',
-  'speech-poc-models-v1': 'transcription and speaker models',
+  'speech-poc-models-v1': 'transcription, voice and speaker models',
+  'transformers-cache': 'voice model (earlier version)',
+  'kokoro-voices': 'voices (earlier version)',
   'parakeet-cache-db': 'transcription model (secondary cache)',
 };
 

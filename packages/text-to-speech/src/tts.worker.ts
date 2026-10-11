@@ -1,16 +1,29 @@
 /**
- * Kokoro TTS worker: kokoro-js (transformers.js + ONNX Runtime Web) load, warm-up and synthesis — streaming a
- * whole text (speak, the benchmark) or one piece on demand (synthesize, read aloud).
+ * Kokoro TTS worker: model load, warm-up and synthesis on ONNX Runtime Web — streaming a whole text (speak, the
+ * benchmark) or one piece on demand (synthesize, read aloud). The model runs through ./kokoro (a port of kokoro-js's
+ * text pipeline on top of onnxruntime-web; no transformers.js).
  * Message protocol: ./protocol.ts. TtsEngine spawns a fresh worker for every load configuration, so a worker
  * loads exactly one model.
  */
-import { env, type ProgressInfo } from '@huggingface/transformers';
-import { KokoroTTS, type GenerateOptions } from 'kokoro-js';
-import { voiceName } from './models.js';
-import { now, setMainTimeOrigin } from '@localspeech/core';
-import { KOKORO_MODEL, KOKORO_RUNTIME } from './models.js';
-import { installFetchInstrumentation, summarizeDownloads, type FetchInstrumentation } from '@localspeech/core';
-import type { DownloadMetrics, FileFetchRecord, LoadProgress, WasmRuntimeInfo } from '@localspeech/core';
+import * as ort from 'onnxruntime-web';
+import {
+  canonicalModelUrl,
+  installFetchInstrumentation,
+  now,
+  openModelCache,
+  retrieveModelFile,
+  setMainTimeOrigin,
+  summarizeDownloads,
+  type ByteProgress,
+  type FetchInstrumentation,
+  type LoadProgress,
+  type WasmRuntimeInfo,
+} from '@localspeech/core';
+import { retryTexts, scrubNonFinite, speechProblem } from './audio-check.js';
+import { adoptLegacyEntry } from './kokoro/legacy-cache.js';
+import { KokoroModel, KOKORO_SAMPLE_RATE } from './kokoro/model.js';
+import { KokoroTokenizer } from './kokoro/tokenizer.js';
+import { KOKORO_MODEL, KOKORO_RUNTIME, voiceName } from './models.js';
 import {
   errorMessage,
   type ChunkAudioCheck,
@@ -21,22 +34,20 @@ import {
   type TtsWorkerRequest,
   type WorkerLoadResult,
 } from './protocol.js';
-import { retryTexts, scrubNonFinite, speechProblem } from './audio-check.js';
 import { splitterFor } from './split.js';
-import { KOKORO_SAMPLE_RATE, synthesizePiece, type PieceSynthesis } from './synthesize.js';
-import { prefetchVoice } from './voice-cache.js';
-
-type KokoroVoice = NonNullable<GenerateOptions['voice']>;
-type OrtWasmFlags = NonNullable<typeof env.backends.onnx.wasm>;
+import { synthesizePiece, type PieceSynthesis } from './synthesize.js';
 
 const WARMUP_TEXT = 'Hello.';
-/** transformers.js reports every network read; forward byte progress at most this often per file. */
+/** Forward byte progress at most this often per file. */
 const PROGRESS_INTERVAL_MS = 100;
+/** If pthread workers cannot start (e.g. /ort/ served without COOP/COEP/CORP), ORT would wait forever. */
 const WASM_INIT_TIMEOUT_MS = 120_000;
 
 let instrumentation: FetchInstrumentation | null = null;
-let tts: KokoroTTS | null = null;
+let tts: KokoroModel | null = null;
 let loadedVoice: string | null = null;
+/** The model file cache, kept for voices fetched after the load (a voice other than the load-time one). */
+let modelCache: Cache | null = null;
 /** Speak runs and synthesize requests execute one after another; each waits for the previous one's inference. */
 let speakQueue: Promise<void> = Promise.resolve();
 const queuedRuns = new Set<number>();
@@ -50,65 +61,134 @@ function progress(p: Omit<LoadProgress, 'model'>): void {
   post({ type: 'progress', progress: { model: 'kokoro', ...p } });
 }
 
+function modelUrl(file: string): string {
+  return canonicalModelUrl(KOKORO_MODEL.repo, KOKORO_MODEL.revision, file);
+}
+
 async function load(req: LoadRequest): Promise<WorkerLoadResult> {
   setMainTimeOrigin(req.timeOrigin);
   if (instrumentation) throw new Error('This TTS worker has already loaded a model.');
   instrumentation = installFetchInstrumentation({ source: req.source, pinnedRevisions: req.pinnedRevisions });
-  instrumentation.beginCapture();
-  const started = now();
 
-  const wasm = env.backends.onnx.wasm;
-  if (!wasm) throw new Error('The inference runtime did not expose its WASM backend settings.');
-  // A string prefix makes ORT import its standalone .mjs glue from our origin, so its pthread workers are
+  const bundled = ort.env.versions.web;
+  if (bundled && bundled !== KOKORO_RUNTIME.version) {
+    throw new Error(`The bundled inference runtime (${bundled}) does not match the self-hosted runtime files (${KOKORO_RUNTIME.version}).`);
+  }
+  // A same-origin prefix makes ORT import its standalone .mjs glue from our origin, so its pthread workers are
   // created from that real file instead of the bundled worker chunk. ORT expects an absolute URL here.
-  wasm.wasmPaths = new URL(KOKORO_RUNTIME.wasmPaths, self.location.href).href;
-  wasm.numThreads = req.wasmThreads > 0 ? req.wasmThreads : defaultThreads();
-  // If pthread workers cannot start (e.g. /ort/ served without COOP/COEP/CORP), Emscripten waits forever;
-  // this turns that into a load error. Generous, because it also covers fetching the 21 MB .wasm.
-  wasm.initTimeout = WASM_INIT_TIMEOUT_MS;
-  env.allowLocalModels = false;
+  const wasmPaths = new URL(KOKORO_RUNTIME.wasmPaths, self.location.href).href;
+  ort.env.wasm.wasmPaths = wasmPaths;
+  ort.env.wasm.numThreads = req.wasmThreads > 0 ? req.wasmThreads : defaultThreads();
+  ort.env.wasm.initTimeout = WASM_INIT_TIMEOUT_MS;
+  if (req.device === 'webgpu') {
+    await assertWebGpuAdapter();
+    ort.env.webgpu.powerPreference = 'high-performance';
+  }
 
   const weights = KOKORO_MODEL.dtypeFiles[req.dtype];
-  const modelFiles: string[] = [...KOKORO_MODEL.supportFiles, weights];
   const voiceFile = KOKORO_MODEL.voiceFile(req.voice);
-  const doneAt = new Map<string, number>();
+  const files = [KOKORO_MODEL.tokenizerFile, weights, voiceFile];
+  const { cache, error: cacheError } = await openModelCache();
+  if (cacheError) storageNotice(`Model files will not be kept for next time: ${cacheError}.`);
+  modelCache = cache;
 
-  if (req.device === 'webgpu') await assertWebGpuAdapter();
   progress({ phase: 'download', message: `Loading the voice model (${req.dtype}) for ${req.device}` });
-  const [model] = await Promise.all([
-    KokoroTTS.from_pretrained(KOKORO_MODEL.repo, {
-      dtype: req.dtype,
-      device: req.device,
-      progress_callback: progressForwarder(modelFiles, doneAt, req.device),
-    }),
-    prefetchVoice(req.voice).then((bytes) =>
-      progress(
-        bytes > 0
-          ? { phase: 'download', file: voiceFile, loadedBytes: bytes, totalBytes: bytes, message: 'done' }
-          : { phase: 'download', file: voiceFile, message: 'done' },
-      ),
-    ),
-  ]);
-  // The voice embedding is a model input, so the model can run its first inference only once both are in.
+  instrumentation.beginCapture();
+  const blobs = new Map<string, Blob>();
+  let networkFiles = 0;
+  let store = true;
+  // Smallest first: once storing fails, the large weights skip the Cache API instead of being downloaded twice.
+  for (const file of files) {
+    if (cache) await adoptLegacyEntry(cache, KOKORO_MODEL.repo, file, modelUrl(file));
+    try {
+      const retrieved = await retrieveModelFile(cache, modelUrl(file), downloadProgress(file), store);
+      blobs.set(file, retrieved.blob);
+      if (retrieved.fromNetwork) networkFiles++;
+      if (retrieved.storageError) {
+        store = false;
+        storageNotice(`${partLabel(file)}: ${retrieved.storageError}; it will be downloaded again next time.`, file);
+      }
+    } catch (err) {
+      throw new Error(`Downloading the ${partLabel(file).toLowerCase()} failed: ${errorMessage(err)}`);
+    }
+  }
+
+  const initializationStart = now();
+  progress({ phase: 'initialize', message: `Creating the ${req.device} inference session` });
+  const tokenizer = new KokoroTokenizer(JSON.parse(await blobs.get(KOKORO_MODEL.tokenizerFile)!.text()));
+  const voiceTable = new Float32Array(await blobs.get(voiceFile)!.arrayBuffer());
+  const session = await createSession(blobs.get(weights)!, req.device);
+  blobs.clear();
+  const model = new KokoroModel(ort, session, tokenizer, (voice) => (voice === req.voice ? Promise.resolve(voiceTable) : fetchVoice(voice)));
+  // The voice table is a model input, so the model can run its first inference only once both are in.
   const modelReady = now();
 
   progress({ phase: 'warmup', message: 'Warm-up synthesis' });
   const warmupStart = now();
-  await model.generate(WARMUP_TEXT, { voice: req.voice as KokoroVoice });
+  await model.generate(WARMUP_TEXT, { voice: req.voice, speed: 1 });
   const warmupMs = now() - warmupStart;
 
-  const records = instrumentation.endCapture();
-  const download = summarizeDownloads([...modelFiles, voiceFile], records);
+  // ORT reads the weights through a blob: URL, which the instrumentation neither counts nor records.
+  const download = summarizeDownloads(files, instrumentation.endCapture());
   tts = model;
   loadedVoice = req.voice;
   progress({ phase: 'ready' });
   return {
     download,
-    loadKind: classifyLoad(download),
-    initializationStart: Math.min(modelReady, dataReadyAt(modelFiles, doneAt, records) ?? started),
+    loadKind: networkFiles === files.length ? 'cold' : networkFiles === 0 ? 'warm' : 'partial',
+    initializationStart,
     modelReady,
     warmupMs,
-    wasm: wasmRuntimeInfo(req.wasmThreads, wasm),
+    wasm: wasmRuntimeInfo(req.wasmThreads, wasmPaths),
+  };
+}
+
+async function createSession(weights: Blob, device: LoadRequest['device']): Promise<ort.InferenceSession> {
+  const url = URL.createObjectURL(weights);
+  try {
+    const session = await ort.InferenceSession.create(url, { executionProviders: [device === 'webgpu' ? 'webgpu' : 'wasm'] });
+    if (device === 'webgpu') {
+      // The JSEP WebGPU backend defines env.webgpu.device once it has started; without it the session runs on WASM.
+      const gpu = Object.getOwnPropertyDescriptor(ort.env.webgpu, 'device')?.value as GPUDevice | undefined;
+      if (!gpu) {
+        await session.release();
+        throw new Error('The runtime did not start its WebGPU backend, so the voice model would run on WASM.');
+      }
+    }
+    return session;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** A voice other than the load-time one, fetched on first use (needs the network unless it was cached before). */
+async function fetchVoice(voice: string): Promise<Float32Array> {
+  const file = KOKORO_MODEL.voiceFile(voice);
+  if (modelCache) await adoptLegacyEntry(modelCache, KOKORO_MODEL.repo, file, modelUrl(file));
+  const { blob } = await retrieveModelFile(modelCache, modelUrl(file), () => undefined, true);
+  return new Float32Array(await blob.arrayBuffer());
+}
+
+/** A model file as named in messages that reach the UI (file names would identify the model). */
+function partLabel(file: string): string {
+  if (file === KOKORO_MODEL.tokenizerFile) return 'Vocabulary';
+  if (file.startsWith('voices/')) return 'Voice';
+  return 'Voice model weights';
+}
+
+/** Also logged: the UI only shows the latest progress message, and this one matters for warm loads. */
+function storageNotice(message: string, file?: string): void {
+  console.warn(`[tts] ${message}`);
+  progress({ phase: 'download', file, message });
+}
+
+function downloadProgress(file: string): ByteProgress {
+  let lastPost = -Infinity;
+  return (loaded, total, done) => {
+    const t = now();
+    if (!done && t - lastPost < PROGRESS_INTERVAL_MS) return;
+    lastPost = t;
+    progress({ phase: 'download', file, loadedBytes: loaded, totalBytes: total ?? undefined, message: done ? 'done' : undefined });
   };
 }
 
@@ -118,62 +198,8 @@ async function load(req: LoadRequest): Promise<WorkerLoadResult> {
  */
 async function assertWebGpuAdapter(): Promise<void> {
   if (!('gpu' in navigator)) throw new Error('WebGPU is not available in this worker (navigator.gpu is missing).');
-  // Same preference transformers.js gives ONNX Runtime.
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) throw new Error('No WebGPU adapter is available in this worker (requestAdapter() returned null).');
-}
-
-/** Forwards transformers.js progress as LoadProgress and records when each file was fully read ('done'). */
-function progressForwarder(modelFiles: string[], doneAt: Map<string, number>, device: string) {
-  const waiting = new Set(modelFiles);
-  const lastPosted = new Map<string, number>();
-  const bytes = new Map<string, { loaded: number; total: number }>();
-  let initializing = false;
-  return (p: ProgressInfo): void => {
-    if (p.status === 'ready') return;
-    const at = now();
-    if (p.status === 'progress') {
-      bytes.set(p.file, { loaded: p.loaded, total: p.total });
-      if (at - (lastPosted.get(p.file) ?? -Infinity) < PROGRESS_INTERVAL_MS) return;
-      lastPosted.set(p.file, at);
-      progress({ phase: 'download', file: p.file, loadedBytes: p.loaded, totalBytes: p.total });
-      return;
-    }
-    if (p.status !== 'done') {
-      progress({ phase: 'download', file: p.file, message: p.status });
-      return;
-    }
-    doneAt.set(p.file, at);
-    waiting.delete(p.file);
-    const read = bytes.get(p.file);
-    progress({ phase: 'download', file: p.file, loadedBytes: read?.loaded, totalBytes: read?.total, message: 'done' });
-    if (waiting.size === 0 && !initializing) {
-      initializing = true;
-      progress({ phase: 'initialize', message: `Creating the ${device} inference session` });
-    }
-  };
-}
-
-/**
- * initializationStart: when the last file from_pretrained needs (config, tokenizer files, ONNX weights) became
- * fully available — per file, the later of transformers.js's 'done' event (fires once the bytes have been read,
- * from the network or the Cache API, and after a fresh download has been written to the cache) and the
- * instrumentation's network completeAt. ORT session creation starts right after. The voice file is excluded:
- * it downloads in parallel and only the warm-up needs it.
- */
-function dataReadyAt(files: string[], doneAt: Map<string, number>, records: FileFetchRecord[]): number | null {
-  let latest: number | null = null;
-  for (const file of files) {
-    const times = [doneAt.get(file), ...records.filter((r) => r.file === file).map((r) => r.completeAt)];
-    for (const t of times) if (t != null && (latest === null || t > latest)) latest = t;
-  }
-  return latest;
-}
-
-function classifyLoad(download: DownloadMetrics): WorkerLoadResult['loadKind'] {
-  const fetched = new Set(download.networkFiles.map((r) => r.file));
-  if (!download.expectedFiles.some((f) => fetched.has(f))) return 'warm';
-  return download.cachedFiles.length === 0 ? 'cold' : 'partial';
 }
 
 /**
@@ -184,21 +210,22 @@ function defaultThreads(): number {
   return Math.max(1, Math.min(8, navigator.hardwareConcurrency || 4));
 }
 
-function wasmRuntimeInfo(requested: number, wasm: OrtWasmFlags): WasmRuntimeInfo {
+function wasmRuntimeInfo(requested: number, wasmPaths: string): WasmRuntimeInfo {
   // Reporting the automatic count as the request makes a non-isolated page show up as "multithreading
   // unavailable" (spec §16) instead of silently running on one thread.
   const requestedThreads = requested > 0 ? requested : defaultThreads();
   // ORT writes the thread count it actually initialised with back into env.wasm.numThreads.
-  const effectiveThreads = wasm.numThreads && wasm.numThreads > 0 ? wasm.numThreads : 1;
+  const configured = ort.env.wasm.numThreads;
+  const effectiveThreads = configured && configured > 0 ? configured : 1;
   const multithreadingUnavailable = requestedThreads > 1 && effectiveThreads <= 1;
   return {
     requestedThreads,
     effectiveThreads,
     multithreadingUnavailable,
     reason: multithreadingUnavailable ? singleThreadReason() : null,
-    // ORT >= 1.19 ships only SIMD builds and refuses to start without SIMD unless the check is disabled.
-    simd: wasm.simd !== false,
-    wasmPaths: typeof wasm.wasmPaths === 'string' ? wasm.wasmPaths : JSON.stringify(wasm.wasmPaths ?? null),
+    // ORT >= 1.19 ships only SIMD builds and refuses to start without SIMD.
+    simd: true,
+    wasmPaths,
   };
 }
 
@@ -225,7 +252,7 @@ async function speak(req: SpeakRequest): Promise<void> {
   try {
     if (!cancelledRuns.has(req.id)) {
       const chunks = model.stream(splitterFor(req.text, req.split), {
-        voice: req.voice as KokoroVoice,
+        voice: req.voice,
         speed: req.speed,
       });
       let generationStart = now();
@@ -254,7 +281,7 @@ async function speak(req: SpeakRequest): Promise<void> {
     }
   } catch (e) {
     if (req.voice === loadedVoice) throw e;
-    // kokoro-js fetches a voice that load() did not pre-fetch on first use, which fails offline.
+    // A voice that load() did not fetch is downloaded on first use, which fails offline.
     throw new Error(`${errorMessage(e)} (${notPreloaded(req.voice)})`);
   }
   post({ type: 'done', id: req.id, generationCompleteAt: now(), chunkCount: index, cancelled: cancelledRuns.has(req.id) });
@@ -266,7 +293,7 @@ async function speak(req: SpeakRequest): Promise<void> {
  * report it in the chunk's audioCheck.
  */
 async function checkedChunk(
-  model: KokoroTTS,
+  model: KokoroModel,
   text: string,
   samples: Float32Array,
   req: SpeakRequest,
@@ -277,7 +304,7 @@ async function checkedChunk(
   for (const variant of retryTexts(text)) {
     retries++;
     console.warn(`[tts] chunk came back ${problem}; retrying as "${variant}"`);
-    const retry = (await model.generate(variant, { voice: req.voice as KokoroVoice, speed: req.speed })).audio;
+    const retry = (await model.generate(variant, { voice: req.voice, speed: req.speed })).audio;
     if (!speechProblem(retry)) return { samples: retry, audioCheck: { problem, retries, failed: false } };
   }
   console.warn(`[tts] chunk still unusable after ${retries} retries: "${text}"`);
@@ -317,7 +344,7 @@ async function synthesize(req: SynthesizeRequest): Promise<void> {
     result = await synthesizePiece(model, req.text, { voice: req.voice, speed: req.speed });
   } catch (e) {
     if (req.voice === loadedVoice) throw e;
-    // kokoro-js downloads a voice that load() did not pre-fetch on first use, which fails offline.
+    // A voice that load() did not fetch is downloaded on first use, which fails offline.
     throw new Error(`${errorMessage(e)} (${notPreloaded(req.voice)})`);
   }
   const audio = ownedSamples(result.audio);

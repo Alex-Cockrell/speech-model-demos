@@ -1,24 +1,19 @@
 /**
- * Persistent storage for Parakeet model files. Runs inside the ASR worker.
+ * Persistent storage for model files. Runs inside the inference workers.
  *
- * Files are keyed by their canonical Hugging Face URL at the pinned revision, so Hugging Face and an R2
- * mirror (byte-identical files) share cache entries. Downloads stream straight into the Cache API and
- * are read back as Blobs, which browsers keep on disk: this module never holds a 0.6–2.3 GB file in JS
- * memory (ONNX Runtime makes its own copy when it creates the session).
- *
- * parakeet.js's own getParakeetModel()/fromHub() is deliberately not used: it always calls the
- * huggingface.co tree API (breaks the mirror and locked-down networks) and caches in IndexedDB.
+ * Files are keyed by their canonical Hugging Face URL at the pinned revision, so Hugging Face and a mirror
+ * (byte-identical files) share cache entries. Downloads stream straight into the Cache API and are read back as
+ * Blobs, which browsers keep on disk: this module never holds a 0.6–2.3 GB file in JS memory (ONNX Runtime makes
+ * its own copy when it creates the session).
  */
-import { HUGGING_FACE_BASE_URL, modelFileUrl } from '@localspeech/core';
-import { PARAKEET_MODEL } from './models.js';
-import { describeError } from './protocol.js';
+import { HUGGING_FACE_BASE_URL, modelFileUrl } from './models.js';
 
-/** Listed in MODEL_CACHE_NAMES (cache.ts in @localspeech/core) so "clear model caches" removes it. */
-export const PARAKEET_CACHE_NAME = 'speech-poc-models-v1';
+/** The Cache API cache every model file is stored in. Listed in MODEL_CACHE_NAMES so "clear model caches" removes it. */
+export const MODEL_CACHE_NAME = 'speech-poc-models-v1';
 
-export function canonicalModelUrl(file: string): string {
-  const huggingFace = { kind: 'huggingface', baseUrl: HUGGING_FACE_BASE_URL } as const;
-  return modelFileUrl(huggingFace, PARAKEET_MODEL.repo, PARAKEET_MODEL.revision, file);
+/** The cache key of a pinned model file: its Hugging Face URL, whichever source it is downloaded from. */
+export function canonicalModelUrl(repo: string, revision: string, file: string): string {
+  return modelFileUrl({ kind: 'huggingface', baseUrl: HUGGING_FACE_BASE_URL }, repo, revision, file);
 }
 
 /** `done` is true once, when the whole body has been read. */
@@ -31,10 +26,10 @@ export interface RetrievedFile {
   storageError: string | null;
 }
 
-export async function openModelCache(): Promise<{ cache: Cache | null; error: string | null }> {
+export async function openModelCache(name: string = MODEL_CACHE_NAME): Promise<{ cache: Cache | null; error: string | null }> {
   if (typeof caches === 'undefined') return { cache: null, error: 'the Cache API is not available here' };
   try {
-    return { cache: await caches.open(PARAKEET_CACHE_NAME), error: null };
+    return { cache: await caches.open(name), error: null };
   } catch (err) {
     return { cache: null, error: `the Cache API cannot be opened (${describeError(err)})` };
   }
@@ -134,4 +129,9 @@ async function quotaShortfall(bytes: number | null): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message || err.name;
+  return typeof err === 'string' ? err : String(err);
 }

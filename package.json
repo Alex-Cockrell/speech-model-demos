@@ -1,6 +1,6 @@
 {
   "name": "speech-model-demos",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "Browser-local speech pipeline proof of concept: microphone -> Parakeet ASR -> transcript -> Kokoro TTS -> speaker, with benchmark instrumentation.",
   "workspaces": [
@@ -37,9 +37,6 @@
     "@types/react-dom": "^19.3.0",
     "@webgpu/types": "^0.1.74",
     "typescript": "^5"
-  },
-  "overrides": {
-    "sharp": "^0.35.5"
   },
   "engines": {
     "node": ">=20.9"

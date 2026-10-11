@@ -110,7 +110,10 @@ const MICROPHONE_ERRORS = new Set(['NotAllowedError', 'NotFoundError', 'NotReada
  */
 function withBackendHint(message: string, backend: LoadConfig<unknown>['backend']): string {
   if (backend !== 'webgpu' || !/webgpu/i.test(message)) return message;
-  return `${message} The backend is set to WebGPU (Benchmark tab → Settings → Backend); set it to Auto to fall back to WASM where WebGPU is unavailable.`;
+  return (
+    `${message} The backend is set to WebGPU (Benchmark tab → Settings → Backend); set it to Auto to fall back to WASM ` +
+    'where WebGPU is unavailable. If WebGPU worked before, restarting the browser usually brings it back.'
+  );
 }
 
 function isMicrophoneError(e: unknown): boolean {

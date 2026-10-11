@@ -1,16 +1,12 @@
 /**
- * Worker-side (imports kokoro-js): synthesise one read-aloud piece as one utterance, without ever letting Kokoro
- * truncate it. Kept out of tts.worker.ts so it can be tested against the real model outside a worker.
+ * Worker-side: synthesise one read-aloud piece as one utterance, without ever letting Kokoro truncate it. Kept out
+ * of tts.worker.ts so it can be tested against the real model outside a worker.
  */
-import type { GenerateOptions, KokoroTTS } from 'kokoro-js';
 import { retryTexts, scrubNonFinite, speechProblem, type SpeechProblem } from './audio-check.js';
-import { KOKORO_MAX_TOKENS, splitInHalf } from './pieces.js';
+import { KOKORO_SAMPLE_RATE, type KokoroModel } from './kokoro/model.js';
+import { splitInHalf } from './pieces.js';
 import { singlePieceSplitter } from './split.js';
 
-type KokoroVoice = NonNullable<GenerateOptions['voice']>;
-
-/** Kokoro's output rate; only used for empty results. */
-export const KOKORO_SAMPLE_RATE = 24_000;
 /** Overflow splits per piece before a part is synthesized truncated (2^4 parts is far beyond any real piece). */
 const MAX_SPLIT_DEPTH = 4;
 
@@ -40,34 +36,30 @@ class TokenOverflow extends Error {
   }
 }
 
-export function tokenLimit(model: KokoroTTS): number {
-  const max = Number(model.tokenizer.model_max_length);
-  return Number.isFinite(max) && max > 2 ? max : KOKORO_MAX_TOKENS;
-}
 
 /**
- * The model with generate_from_ids wrapped: stream() calls it with the token ids after phonemizing and
- * tokenizing with truncation at model_max_length. A sequence that reaches the limit was cut off, so the wrapper
+ * The model with generateFromIds wrapped: stream() calls it with the token ids after phonemizing and
+ * tokenizing with truncation at the tokenizer's maximum length. A sequence that reaches the limit was cut off, so the wrapper
  * throws before running the model instead of producing audio that silently drops the end of the piece.
  * Object.create keeps the shared instance untouched (the benchmark's speak() uses it unwrapped).
  */
-function guardedModel(model: KokoroTTS, stats: PieceSynthesis, allowTruncation: boolean): KokoroTTS {
-  const limit = tokenLimit(model);
-  const guarded = Object.create(model) as KokoroTTS;
-  guarded.generate_from_ids = (ids, options) => {
-    const tokens = ids.dims.at(-1) ?? 0;
+function guardedModel(model: KokoroModel, stats: PieceSynthesis, allowTruncation: boolean): KokoroModel {
+  const limit = model.tokenizer.modelMaxLength;
+  const guarded = Object.create(model) as KokoroModel;
+  guarded.generateFromIds = (ids, options) => {
+    const tokens = ids.length;
     if (tokens >= limit) {
       if (!allowTruncation) throw new TokenOverflow(tokens);
       stats.truncated = true;
     }
     stats.maxTokens = Math.max(stats.maxTokens, tokens);
-    return model.generate_from_ids(ids, options);
+    return model.generateFromIds(ids, options);
   };
   return guarded;
 }
 
 async function synthesizeText(
-  model: KokoroTTS,
+  model: KokoroModel,
   text: string,
   options: { voice: string; speed: number },
   parts: Float32Array[],
@@ -76,7 +68,7 @@ async function synthesizeText(
 ): Promise<void> {
   const runner = guardedModel(model, stats, depth >= MAX_SPLIT_DEPTH);
   try {
-    for await (const { audio } of runner.stream(singlePieceSplitter(text), { voice: options.voice as KokoroVoice, speed: options.speed })) {
+    for await (const { audio } of runner.stream(singlePieceSplitter(text), { voice: options.voice, speed: options.speed })) {
       stats.inferences++;
       stats.sampleRate = audio.sampling_rate;
       parts.push(audio.audio);
@@ -98,7 +90,7 @@ async function synthesizeText(
  * that would exceed the token window is split in two at the best boundary near the middle, recursively, and the
  * audio of the parts is joined.
  */
-export async function synthesizePiece(model: KokoroTTS, text: string, options: { voice: string; speed: number }): Promise<PieceSynthesis> {
+export async function synthesizePiece(model: KokoroModel, text: string, options: { voice: string; speed: number }): Promise<PieceSynthesis> {
   const stats: PieceSynthesis = {
     audio: new Float32Array(0),
     sampleRate: KOKORO_SAMPLE_RATE,

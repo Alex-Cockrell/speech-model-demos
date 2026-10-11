@@ -13,7 +13,7 @@ The UI deliberately shows no model, library or host names. They are documented h
 ```text
 Microphone / shared call audio → AudioWorklet (16 kHz PCM) → ASR worker: NVIDIA Parakeet TDT 0.6B v3 (parakeet.js)
   → segments → speaker worker: 3D-Speaker CAM++ embeddings + clustering → transcript
-Text → TTS worker: Kokoro 82M (kokoro-js / transformers.js) → Web Audio playback
+Text → TTS worker: Kokoro 82M (packages/text-to-speech/src/kokoro, a port of kokoro-js's text pipeline) → Web Audio playback
 All models run on ONNX Runtime Web (WebGPU or multithreaded WASM).
 ```
 
@@ -82,7 +82,7 @@ Production builds add a Content-Security-Policy (`scripts/network-lock.mjs`, run
 | Feature | Languages |
 | --- | --- |
 | Speech recognition (meeting transcription, benchmark) | 25 European languages, detected automatically per segment, with punctuation and capitalization: Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian. No Asian languages. |
-| Speech synthesis (read aloud, benchmark read-back) | English only (US and UK accents; the app offers two US voices, Heart and Michael). The model itself has voices for other languages, but kokoro-js 1.2.1 only converts English text to phonemes. |
+| Speech synthesis (read aloud, benchmark read-back) | English only (US and UK accents; the app offers two US voices, Heart and Michael). The model itself has voices for other languages, but the text-to-phoneme step (ported from kokoro-js 1.2.1) only handles English. |
 | Speaker identification | Language-independent (it compares voices, not words). |
 | Teams transcript refinement, echo detection, word error rate | Any of the recognized languages: word matching is Unicode-aware (accented letters, Greek and Cyrillic). |
 
@@ -180,7 +180,7 @@ Download per backend with the default ("auto") quantizations, one voice included
 
 Meeting transcription adds the speaker model: 3D-Speaker CAM++ (VoxCeleb, `csukuangfj/speaker-embedding-models`), 29.6 MB, always on WASM with 1 thread (ONNX Runtime Web's WebGPU backend can't run its pooling; the app also patches an AveragePool padding bug of ORT ≤ 1.24 in memory). Its upstream weights are Apache-2.0, but the re-export repository carries no license tag; confirm before production use.
 
-Add the ONNX Runtime files served by the app (23.8 MiB for Parakeet, 20.6 MiB for Kokoro). The Parakeet decoder always runs on WASM, so it stays int8. The mirror only has the fp32 encoder if it was uploaded with `--include-fp32`.
+Add the ONNX Runtime files served by the app (23.8 MiB, one copy shared by both models). The Parakeet decoder always runs on WASM, so it stays int8. The mirror only has the fp32 encoder if it was uploaded with `--include-fp32`.
 
 ## Test matrix (spec §17)
 

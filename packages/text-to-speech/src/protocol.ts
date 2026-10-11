@@ -9,7 +9,7 @@
  * speak streams a whole text (the benchmark); synthesize generates exactly one piece on demand, so the caller
  * (read aloud) decides how far generation runs ahead of playback. Both run one at a time, in arrival order.
  *
- * Nothing here imports kokoro-js, so the main thread can import it without bundling the model library.
+ * Nothing here imports the inference runtime, so the main thread can import it without bundling the model code.
  */
 import type { DownloadMetrics, LoadKind, LoadProgress, ModelSource, ResolvedBackend, WasmRuntimeInfo } from '@localspeech/core';
 import type { KokoroDtype, TtsChunkRecord, TtsSettings } from './types.js';
