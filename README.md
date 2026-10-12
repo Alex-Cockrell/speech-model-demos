@@ -17,9 +17,21 @@ Text → TTS worker: Kokoro 82M (packages/text-to-speech/src/kokoro, a port of k
 All models run on ONNX Runtime Web (WebGPU or multithreaded WASM).
 ```
 
+## Packages
+
+The speech engines are published as npm packages (MIT) you can add to your own site:
+
+| Package | |
+| --- | --- |
+| [`@localspeech/text-to-speech`](packages/text-to-speech) | Read aloud: finished text or an LLM reply as it streams in; React hooks; assistant-ui adapters |
+| [`@localspeech/speech-to-text`](packages/speech-to-text) | Dictation, file transcription, multi-source sessions; React hooks; assistant-ui dictation adapter |
+| [`@localspeech/core`](packages/core) | Shared plumbing and the `localspeech-assets` / `localspeech-models` commands |
+
+[examples/assistant-ui-chat](examples/assistant-ui-chat) shows both in an assistant-ui chat. Releasing: [RELEASING.md](RELEASING.md).
+
 ## Code layout
 
-The speech engines live in npm workspace packages, which this app consumes like any other site would (they are being prepared for publishing):
+The speech engines live in npm workspace packages, which this app consumes like any other site would:
 
 | Package | Contents |
 | --- | --- |
@@ -237,5 +249,7 @@ Use 16-bit PCM WAV files. Sharing a real tab that plays audio doesn't work for a
 | `npm run preview` | Serve `out/` with Cloudflare's headers and MIME types |
 | `npm run typecheck` | Build the packages, then `tsc --noEmit` for the app |
 | `npm run audit:prod` | Fail on any high or critical advisory in production dependencies (also run by CI) |
+| `npm test` | Unit tests of the packages (vitest; also run by CI) |
+| `npm run pack:packages` | Build and `npm pack` the packages into `.tarballs/` (what would be published; the example installs these) |
 | `npm run copy-ort-assets` | Copy the ONNX Runtime files into `public/ort/`, checking versions against `PARAKEET_RUNTIME` / `KOKORO_RUNTIME` in `packages/*/src/models.ts` |
 | `npm run mirror-models -- [options]` | Mirror the pinned model files to R2, or `--verify` a mirror (see `--help`) |

@@ -34,11 +34,14 @@ const fakeModel: ChatModelAdapter = {
   },
 };
 
+/** Set at build time to serve the models from this site (npx localspeech-models public/models → '/models'). */
+const MODEL_BASE_URL = process.env.NEXT_PUBLIC_MODEL_BASE_URL || undefined;
+
 export default function Page() {
   // Configuration is plain data: in a real app it could come from your backend.
   return (
-    <TextToSpeechProvider config={{ voice: 'af_heart' }}>
-      <SpeechToTextProvider>
+    <TextToSpeechProvider config={{ voice: 'af_heart', modelBaseUrl: MODEL_BASE_URL }}>
+      <SpeechToTextProvider config={{ modelBaseUrl: MODEL_BASE_URL }}>
         <Chat />
       </SpeechToTextProvider>
     </TextToSpeechProvider>

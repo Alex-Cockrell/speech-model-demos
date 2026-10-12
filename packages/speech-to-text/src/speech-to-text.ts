@@ -16,10 +16,10 @@ import {
   MODEL_CACHE_NAME,
   canonicalModelUrl,
   detectWebGpuSupport,
+  modelSourceFor,
   type BackendChoice,
   type DownloadProgress,
   type LoadProgress,
-  type ModelSource,
   type ResolvedBackend,
 } from '@localspeech/core';
 
@@ -33,7 +33,11 @@ import type { SessionCallbacks, SessionOptions, TranscriptionSession } from './s
 import type { AsrSettings, ParakeetQuant } from './types.js';
 
 export interface SpeechToTextConfig {
-  /** Where model files are downloaded from: Hugging Face (default) or a mirror with the same layout. */
+  /**
+   * Where model files are downloaded from: Hugging Face (default) or a mirror with the same layout
+   * ({base}/{repo}/resolve/{revision}/{file}; the localspeech-models CLI creates one). May be a path on this site,
+   * e.g. '/models'.
+   */
   modelBaseUrl?: string;
   /**
    * URL of the folder serving ONNX Runtime's ort-wasm-simd-threaded.jsep.{mjs,wasm} (copied there by the
@@ -211,10 +215,7 @@ export class SpeechToText {
     this.set({ ...IDLE, status: 'loading', progress: { phase: 'download', loadedBytes: 0, totalBytes: null, fraction: null } });
     const files = new Map<string, { loaded: number; total: number | null }>();
     try {
-      const source: ModelSource =
-        this.config.modelBaseUrl === HUGGING_FACE_BASE_URL
-          ? { kind: 'huggingface', baseUrl: HUGGING_FACE_BASE_URL }
-          : { kind: 'mirror', baseUrl: this.config.modelBaseUrl };
+      const source = modelSourceFor(this.config.modelBaseUrl);
       const record = await this.engine.load({
         backend: this.config.backend,
         source,

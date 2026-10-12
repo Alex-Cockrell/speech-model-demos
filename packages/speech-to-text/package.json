@@ -1,10 +1,33 @@
 {
   "name": "@localspeech/speech-to-text",
   "version": "0.1.0",
-  "private": true,
   "description": "Live speech-to-text that runs entirely in the browser (Parakeet TDT v3 on WebGPU or WASM).",
+  "keywords": [
+    "speech-to-text",
+    "speech-recognition",
+    "asr",
+    "dictation",
+    "transcription",
+    "parakeet",
+    "browser",
+    "webgpu",
+    "wasm",
+    "on-device",
+    "privacy",
+    "react",
+    "assistant-ui"
+  ],
   "license": "MIT",
   "author": "Alex Cockrell",
+  "homepage": "https://github.com/Alex-Cockrell/speech-model-demos/tree/main/packages/speech-to-text#readme",
+  "bugs": {
+    "url": "https://github.com/Alex-Cockrell/speech-model-demos/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alex-Cockrell/speech-model-demos.git",
+    "directory": "packages/speech-to-text"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -43,5 +66,8 @@
     "react": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

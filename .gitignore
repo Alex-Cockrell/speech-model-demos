@@ -31,3 +31,4 @@ examples/*/node_modules/
 examples/*/.next/
 examples/*/package-lock.json
 examples/*/public/localspeech/
+examples/*/public/models/

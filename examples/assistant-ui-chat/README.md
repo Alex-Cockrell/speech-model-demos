@@ -33,3 +33,15 @@ npm run dev                    # http://localhost:3000
 
 After changing a package, run `npm run pack:packages` again, then `npm install` here (delete `package-lock.json`
 first if npm keeps the old tarball).
+
+## Serving the models from this site
+
+To fetch nothing from huggingface.co (e.g. on a locked-down network):
+
+```sh
+npx localspeech-models public/models --tts-precision fp16 --stt-precision int8   # what 'auto' uses on WASM
+NEXT_PUBLIC_MODEL_BASE_URL=/models npm run build && npm start
+```
+
+(PowerShell: `$env:NEXT_PUBLIC_MODEL_BASE_URL='/models'; npm run build; npm start`.) For WebGPU, also download
+`--tts-precision fp32 --stt-precision fp16`, or simply run `npx localspeech-models public/models` for the defaults.

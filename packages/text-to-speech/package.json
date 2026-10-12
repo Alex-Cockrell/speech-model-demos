@@ -1,10 +1,33 @@
 {
   "name": "@localspeech/text-to-speech",
   "version": "0.1.0",
-  "private": true,
   "description": "Streaming text-to-speech that runs entirely in the browser (Kokoro 82M on WebGPU or WASM).",
+  "keywords": [
+    "text-to-speech",
+    "tts",
+    "speech-synthesis",
+    "read-aloud",
+    "kokoro",
+    "streaming",
+    "llm",
+    "browser",
+    "webgpu",
+    "wasm",
+    "on-device",
+    "react",
+    "assistant-ui"
+  ],
   "license": "MIT",
   "author": "Alex Cockrell",
+  "homepage": "https://github.com/Alex-Cockrell/speech-model-demos/tree/main/packages/text-to-speech#readme",
+  "bugs": {
+    "url": "https://github.com/Alex-Cockrell/speech-model-demos/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alex-Cockrell/speech-model-demos.git",
+    "directory": "packages/text-to-speech"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -51,5 +74,8 @@
   },
   "devDependencies": {
     "@assistant-ui/react": "0.15.28"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
