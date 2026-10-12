@@ -13,6 +13,7 @@ import type { AsrRunMetrics, AsrSettings, MicInfo, PartialUpdate } from './types
 import { AudioCapture, openMicrophone, stopStreams, type CaptureInput } from './capture.js';
 import { meanSquare, PcmBuffer } from './pcm.js';
 import { ASR_SAMPLE_RATE, describeError } from './protocol.js';
+import { SegmentTexts } from './segment-texts.js';
 import { LiveTranscriber, type PassRunner, type TranscriberLog } from './transcriber.js';
 
 const LEVEL_INTERVAL_SAMPLES = ASR_SAMPLE_RATE / 20;
@@ -233,47 +234,6 @@ export class BenchmarkRecording {
       mic,
     };
   }
-}
-
-/** Text of the segments of one recording, in order: each one's final, or its latest partial until the final arrives. */
-export class SegmentTexts {
-  private readonly segments: { id: string; partial: string; final: string | null }[] = [];
-
-  start(id: string): void {
-    this.segments.push({ id, partial: '', final: null });
-  }
-
-  partial(id: string, text: string): void {
-    const segment = this.find(id);
-    if (segment && segment.final === null) segment.partial = text;
-  }
-
-  final(id: string, text: string): void {
-    const segment = this.find(id);
-    if (segment) segment.final = text;
-  }
-
-  /** What the benchmark shows while recording. */
-  get visible(): string {
-    return joinTexts(this.segments.map((segment) => segment.final ?? segment.partial));
-  }
-
-  /** The concatenated final texts (streamingText). */
-  get finals(): string {
-    return joinTexts(this.segments.map((segment) => segment.final ?? ''));
-  }
-
-  private find(id: string): { id: string; partial: string; final: string | null } | undefined {
-    for (let i = this.segments.length - 1; i >= 0; i--) if (this.segments[i].id === id) return this.segments[i];
-    return undefined;
-  }
-}
-
-function joinTexts(texts: readonly string[]): string {
-  return texts
-    .map((text) => text.trim())
-    .filter((text) => text !== '')
-    .join(' ');
 }
 
 /** Compute milliseconds per millisecond of 16 kHz audio. */

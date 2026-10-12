@@ -144,6 +144,16 @@ export interface LoadProgress {
   message?: string;
 }
 
+/** Aggregate download progress of a model load, as the packages' high-level APIs report it. */
+export interface DownloadProgress {
+  phase: LoadProgress['phase'];
+  loadedBytes: number;
+  /** Null while the sizes are not known yet. */
+  totalBytes: number | null;
+  /** 0…1 of the known download size; null while unknown. */
+  fraction: number | null;
+}
+
 export interface WebGpuInfo {
   /** navigator.gpu exists */
   apiPresent: boolean;

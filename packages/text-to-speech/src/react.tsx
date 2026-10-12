@@ -4,7 +4,7 @@
  * can speak with it.
  *
  *   <TextToSpeechProvider config={{ voice: 'af_heart' }}>   // or tts={instance}
- *     <DownloadButton />   // useModelDownload()
+ *     <DownloadButton />   // useTextToSpeechDownload()
  *     <ReadButton />       // useSpeak()
  *   </TextToSpeechProvider>
  */
@@ -49,7 +49,7 @@ export function useTextToSpeechState(): TextToSpeechState {
   return useSyncExternalStore(tts.subscribe, tts.getSnapshot, tts.getSnapshot);
 }
 
-export interface ModelDownload {
+export interface TextToSpeechDownload {
   status: TextToSpeechState['status'];
   progress: DownloadProgress | null;
   error: string | null;
@@ -58,8 +58,8 @@ export interface ModelDownload {
   load: () => Promise<void>;
 }
 
-/** Everything a download button / progress bar needs. */
-export function useModelDownload(): ModelDownload {
+/** Everything a download button / progress bar for the voice model needs. */
+export function useTextToSpeechDownload(): TextToSpeechDownload {
   const tts = useTextToSpeech();
   const state = useTextToSpeechState();
   const [cached, setCached] = useState<boolean | null>(null);

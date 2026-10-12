@@ -17,10 +17,13 @@ import {
   canonicalModelUrl,
   detectWebGpuSupport,
   type BackendChoice,
+  type DownloadProgress,
   type LoadProgress,
   type ModelSource,
   type ResolvedBackend,
 } from '@localspeech/core';
+
+export type { DownloadProgress } from '@localspeech/core';
 import { parseDocument, type DocFormat } from './document.js';
 import { TtsEngine, type TtsEnvironment } from './engine.js';
 import { DEFAULT_TTS_SETTINGS, KOKORO_MODEL, KOKORO_RUNTIME } from './models.js';
@@ -56,15 +59,6 @@ export interface TextToSpeechConfig {
 }
 
 export type TextToSpeechStatus = 'idle' | 'loading' | 'ready' | 'error';
-
-export interface DownloadProgress {
-  phase: LoadProgress['phase'];
-  loadedBytes: number;
-  /** Null while the sizes are not known yet. */
-  totalBytes: number | null;
-  /** 0…1 of the known download size; null while unknown. */
-  fraction: number | null;
-}
 
 export interface TextToSpeechState {
   status: TextToSpeechStatus;

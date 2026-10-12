@@ -22,6 +22,8 @@ export interface LoadRequest {
   quant: ParakeetQuant;
   /** ORT WASM threads as set by the user; 0 = automatic (resolveWasmThreads). */
   threads: number;
+  /** Absolute URL of the folder serving ONNX Runtime's .mjs/.wasm files. */
+  runtimeUrl: string;
 }
 
 export interface LoadResult {

@@ -17,11 +17,11 @@
  */
 import { mainTimeOriginForWorkers, now } from '@localspeech/core';
 import { DEFAULT_ASR_SETTINGS, PARAKEET_LIBRARY_VERSIONS, PARAKEET_RUNTIME, PARAKEET_MODEL } from './models.js';
-import type { BackendChoice, DownloadMetrics, EnvironmentInfo, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend } from '@localspeech/core';
+import type { BackendChoice, DownloadMetrics, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend } from '@localspeech/core';
 import type { AsrRunMetrics, AsrSettings } from './types.js';
 import { stopStreams } from './capture.js';
 import { LiveSession, type Segmentation } from './live-session.js';
-import { DECODER_QUANT, resolveEncoderQuant } from './model-files.js';
+import { DECODER_QUANT, resolveEncoderQuant, type AsrEnvironment } from './model-files.js';
 import { describeError, type LoadResult } from './protocol.js';
 import { BenchmarkRecording, type AsrRecordingCallbacks } from './recording.js';
 import type { SessionCallbacks, SessionOptions, TranscriptionSession } from './session.js';
@@ -34,8 +34,10 @@ export interface AsrLoadOptions {
   backend: BackendChoice;
   source: ModelSource;
   settings: AsrSettings;
-  /** From detectEnvironment(); used to resolve 'auto' backend and quantization. */
-  environment: EnvironmentInfo;
+  /** From detectEnvironment() or detectWebGpuSupport(); used to resolve 'auto' backend and quantization. */
+  environment: AsrEnvironment;
+  /** URL of the folder serving ONNX Runtime's ort-wasm-simd-threaded.jsep.{mjs,wasm}; default PARAKEET_RUNTIME.wasmPaths. */
+  runtimeUrl?: string;
   onProgress?: (p: LoadProgress) => void;
 }
 
@@ -162,6 +164,18 @@ export class AsrEngine {
     }
   }
 
+  /**
+   * Transcribes 16 kHz mono audio in one pass (parakeet.js windows recordings beyond 180 s). Needs a loaded model;
+   * runs in the same worker as live passes, one after another.
+   */
+  async transcribe(audio: Float32Array): Promise<{ text: string; computeMs: number }> {
+    const client = this.client;
+    if (!client || !this.record) throw new Error('Load the transcription model before transcribing.');
+    // A copy: the worker takes ownership of the buffer it is sent.
+    const result = await client.run('full', new Float32Array(audio), null);
+    return { text: result.text.trim(), computeMs: result.computeMs };
+  }
+
   /** fetch() calls the ASR worker has made since it started (privacy check). */
   async networkRequestCount(): Promise<number> {
     return this.client ? this.client.requestCount() : 0;
@@ -193,7 +207,7 @@ export class AsrEngine {
       );
     }
     const settings = normalizeSettings(opts.settings);
-    const key = JSON.stringify([opts.backend, opts.source.kind, opts.source.baseUrl, settings.encoderQuant, settings.wasmThreads]);
+    const key = JSON.stringify([opts.backend, opts.source.kind, opts.source.baseUrl, settings.encoderQuant, settings.wasmThreads, opts.runtimeUrl ?? null]);
     if (this.client && this.record && this.loadedKey === key) {
       this.settings = settings;
       opts.onProgress?.({ model: 'parakeet', phase: 'ready', message: 'Already initialised in this page session.' });
@@ -253,6 +267,8 @@ export class AsrEngine {
       backend,
       quant,
       threads: settings.wasmThreads,
+      // Resolved here: relative URLs in the worker would resolve against the worker script, not the page.
+      runtimeUrl: new URL(opts.runtimeUrl ?? PARAKEET_RUNTIME.wasmPaths, globalThis.location?.href).href,
     });
   }
 

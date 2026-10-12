@@ -135,8 +135,8 @@ export class LiveSession implements TranscriptionSession {
     return this.stopping;
   }
 
-  /** Ends the session at once (engine disposed): no more events, devices released. */
-  abort(reason: string): void {
+  /** Ends the session at once (cancelled, or the engine disposed): no more events, devices released. */
+  abort(reason = 'The transcription was cancelled.'): void {
     if (this.closed) return;
     this.core.abandon();
     this.release();

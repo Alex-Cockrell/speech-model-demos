@@ -1,7 +1,7 @@
 {
   "name": "localspeech-example-assistant-ui-chat",
   "private": true,
-  "description": "assistant-ui chat with local read-aloud (@localspeech/text-to-speech), installed from npm pack tarballs.",
+  "description": "assistant-ui chat with local read-aloud and dictation (@localspeech/*), installed from npm pack tarballs.",
   "scripts": {
     "predev": "localspeech-assets",
     "dev": "next dev",
@@ -12,6 +12,7 @@
   "dependencies": {
     "@assistant-ui/react": "0.15.28",
     "@localspeech/core": "file:../../.tarballs/localspeech-core-0.1.0.tgz",
+    "@localspeech/speech-to-text": "file:../../.tarballs/localspeech-speech-to-text-0.1.0.tgz",
     "@localspeech/text-to-speech": "file:../../.tarballs/localspeech-text-to-speech-0.1.0.tgz",
     "next": "16.3.8",
     "react": "19.3.0",

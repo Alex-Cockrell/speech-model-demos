@@ -92,7 +92,7 @@ async function loadModel(request: LoadRequest, net: FetchInstrumentation): Promi
   // Must be set before parakeet.js's initOrt(), which otherwise points ORT at jsDelivr. A same-origin
   // prefix also makes ORT import the standalone ort-wasm-simd-threaded.jsep.mjs (and spawn that as its
   // pthread workers) instead of the copy bundled into this worker chunk.
-  const wasmPaths = new URL(PARAKEET_RUNTIME.wasmPaths, self.location.origin).href;
+  const wasmPaths = new URL(request.runtimeUrl, self.location.href).href;
   ort.env.wasm.wasmPaths = wasmPaths;
   if (request.backend === 'webgpu') await checkWebGpuAdapter(request.quant);
 

@@ -120,4 +120,6 @@ export interface TranscriptionSession {
    * speakerComputeMs is null in the result (the meeting layer fills it). Calling it again returns the same promise.
    */
   stop(): Promise<SessionStats>;
+  /** Ends at once without finalizing open segments (no more events); devices are released. */
+  abort(reason?: string): void;
 }

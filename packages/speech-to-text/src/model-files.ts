@@ -1,6 +1,11 @@
 import { PARAKEET_MODEL } from './models.js';
-import type { EnvironmentInfo, ResolvedBackend } from '@localspeech/core';
+import type { ResolvedBackend, WebGpuInfo } from '@localspeech/core';
 import type { AsrSettings, ParakeetQuant } from './types.js';
+
+/** What load() reads of the environment: WebGPU availability (for 'auto') and shader-f16 (for the encoder precision). */
+export interface AsrEnvironment {
+  webgpu: Pick<WebGpuInfo, 'apiPresent' | 'adapterAvailable' | 'error' | 'shaderF16'>;
+}
 
 /** parakeet.js always runs the decoder/joiner on WASM, so the int8 file is used for every backend. */
 export const DECODER_QUANT = 'int8';
@@ -34,7 +39,7 @@ export function expectedFileList(files: ParakeetFiles): string[] {
 export function resolveEncoderQuant(
   backend: ResolvedBackend,
   setting: AsrSettings['encoderQuant'],
-  environment: EnvironmentInfo,
+  environment: AsrEnvironment,
 ): ParakeetQuant {
   if (backend === 'wasm') return setting === 'auto' ? 'int8' : setting;
   if (setting === 'auto') return environment.webgpu.shaderF16 ? 'fp16' : 'fp32';
