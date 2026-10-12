@@ -305,3 +305,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 function describeError(err: unknown): string {
   return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
 }
+
+/** WebGPU availability and adapter features only (what the engines need to resolve 'auto'); never throws. */
+export function detectWebGpuSupport(): Promise<WebGpuInfo> {
+  return detectWebGpu(typeof navigator === 'undefined' ? undefined : (navigator as ExtendedNavigator));
+}

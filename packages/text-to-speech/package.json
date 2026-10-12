@@ -11,7 +11,16 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./assistant-ui": {
+      "types": "./dist/assistant-ui.d.ts",
+      "import": "./dist/assistant-ui.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -27,5 +36,20 @@
     "@localspeech/core": "0.1.0",
     "onnxruntime-web": "1.24.1",
     "phonemizer": "1.2.1"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "@assistant-ui/react": ">=0.15 <0.16"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@assistant-ui/react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@assistant-ui/react": "0.15.28"
   }
 }

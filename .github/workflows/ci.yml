@@ -18,4 +18,5 @@ jobs:
       # Fails on any high or critical advisory in production dependencies.
       - run: npm run audit:prod
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build

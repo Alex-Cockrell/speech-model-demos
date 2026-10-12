@@ -10,7 +10,7 @@
  */
 import { mainTimeOriginForWorkers, now } from '@localspeech/core';
 import { KOKORO_MODEL, KOKORO_LIBRARY_VERSIONS, KOKORO_RUNTIME } from './models.js';
-import type { BackendChoice, DownloadMetrics, EnvironmentInfo, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend } from '@localspeech/core';
+import type { BackendChoice, DownloadMetrics, LoadProgress, ModelLoadRecord, ModelSource, ResolvedBackend, WebGpuInfo } from '@localspeech/core';
 import type { KokoroDtype, TtsChunkRecord, TtsRunMetrics, TtsSettings } from './types.js';
 import {
   errorMessage,
@@ -26,8 +26,15 @@ export interface TtsLoadOptions {
   source: ModelSource;
   /** Load-time fields: dtype, wasmThreads, voice (voice file is pre-fetched so offline runs work). */
   settings: TtsSettings;
-  environment: EnvironmentInfo;
+  /** Only WebGPU availability is used (to resolve 'auto'); detectEnvironment() or detectWebGpuSupport() provide it. */
+  environment: TtsEnvironment;
+  /** URL of the folder serving ONNX Runtime's ort-wasm-simd-threaded.jsep.{mjs,wasm}; default KOKORO_RUNTIME.wasmPaths. */
+  runtimeUrl?: string;
   onProgress?: (p: LoadProgress) => void;
+}
+
+export interface TtsEnvironment {
+  webgpu: Pick<WebGpuInfo, 'adapterAvailable' | 'error'>;
 }
 
 export interface TtsSpeakCallbacks {
@@ -320,6 +327,8 @@ export class TtsEngine {
         dtype,
         wasmThreads: opts.settings.wasmThreads,
         voice: opts.settings.voice,
+        // Resolved here: relative URLs in the worker would resolve against the worker script, not the page.
+        runtimeUrl: new URL(opts.runtimeUrl ?? KOKORO_RUNTIME.wasmPaths, globalThis.location?.href).href,
       });
     } catch (e) {
       if (token !== this.loadToken) throw e;
@@ -450,8 +459,8 @@ function resolveDtype(dtype: TtsSettings['dtype'], device: ResolvedBackend): Kok
 }
 
 /** Everything that makes a loaded instance reusable; any difference means a new worker and a fresh load. */
-function loadKey({ backend, source, settings }: TtsLoadOptions): string {
-  return JSON.stringify([backend, source.kind, source.baseUrl, settings.dtype, settings.wasmThreads, settings.voice]);
+function loadKey({ backend, source, settings, runtimeUrl }: TtsLoadOptions): string {
+  return JSON.stringify([backend, source.kind, source.baseUrl, settings.dtype, settings.wasmThreads, settings.voice, runtimeUrl ?? null]);
 }
 
 function buildLoadRecord(

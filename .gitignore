@@ -24,3 +24,10 @@ Thumbs.db
 
 # compiled workspace packages (npm run build:packages)
 packages/*/dist/
+
+# npm pack output (npm run pack:packages) and the example apps installed from it
+.tarballs/
+examples/*/node_modules/
+examples/*/.next/
+examples/*/package-lock.json
+examples/*/public/localspeech/

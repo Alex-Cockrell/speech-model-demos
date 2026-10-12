@@ -27,6 +27,8 @@ export interface LoadRequest {
   wasmThreads: number;
   /** Fetched during the load and used for the warm-up, so later runs need no network. */
   voice: string;
+  /** Absolute URL of the folder serving ONNX Runtime's .mjs/.wasm files. */
+  runtimeUrl: string;
 }
 
 export interface SpeakRequest {

@@ -1,6 +1,6 @@
 {
   "name": "speech-model-demos",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "description": "Browser-local speech pipeline proof of concept: microphone -> Parakeet ASR -> transcript -> Kokoro TTS -> speaker, with benchmark instrumentation.",
   "workspaces": [
@@ -9,6 +9,7 @@
   "scripts": {
     "build:packages": "tsc -b packages/speech-to-text packages/text-to-speech",
     "dev:packages": "tsc -b -w packages/speech-to-text packages/text-to-speech",
+    "pack:packages": "npm run build:packages && npm pack --pack-destination .tarballs -w packages/core -w packages/text-to-speech -w packages/speech-to-text",
     "predev": "npm run build:packages && node scripts/copy-ort-assets.mjs",
     "dev": "next dev",
     "prebuild": "npm run build:packages && node scripts/copy-ort-assets.mjs",
@@ -16,6 +17,7 @@
     "postbuild": "node scripts/network-lock.mjs",
     "preview": "node scripts/serve-out.mjs",
     "typecheck": "npm run build:packages && tsc --noEmit",
+    "test": "vitest run",
     "copy-ort-assets": "node scripts/copy-ort-assets.mjs",
     "mirror-models": "node scripts/mirror-models-to-r2.mjs",
     "audit:prod": "npm audit --omit=dev --audit-level=high"
@@ -36,7 +38,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@webgpu/types": "^0.1.74",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.3"
   },
   "engines": {
     "node": ">=20.9"

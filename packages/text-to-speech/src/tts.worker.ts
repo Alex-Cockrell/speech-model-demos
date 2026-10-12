@@ -76,7 +76,7 @@ async function load(req: LoadRequest): Promise<WorkerLoadResult> {
   }
   // A same-origin prefix makes ORT import its standalone .mjs glue from our origin, so its pthread workers are
   // created from that real file instead of the bundled worker chunk. ORT expects an absolute URL here.
-  const wasmPaths = new URL(KOKORO_RUNTIME.wasmPaths, self.location.href).href;
+  const wasmPaths = new URL(req.runtimeUrl, self.location.href).href;
   ort.env.wasm.wasmPaths = wasmPaths;
   ort.env.wasm.numThreads = req.wasmThreads > 0 ? req.wasmThreads : defaultThreads();
   ort.env.wasm.initTimeout = WASM_INIT_TIMEOUT_MS;

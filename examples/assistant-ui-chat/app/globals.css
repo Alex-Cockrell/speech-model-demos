@@ -1,0 +1,10 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0 auto; max-width: 720px; padding: 16px; }
+.panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px; border: 1px solid #8884; border-radius: 8px; margin-bottom: 12px; }
+.thread { border: 1px solid #8884; border-radius: 8px; padding: 12px; min-height: 240px; }
+.message { margin: 8px 0; padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; }
+.user { background: #3b82f622; margin-left: 20%; }
+.assistant { background: #8882; }
+.composer { display: flex; gap: 8px; margin-top: 12px; }
+.composer textarea { flex: 1; padding: 8px; font: inherit; }
+button { font: inherit; padding: 6px 12px; cursor: pointer; }

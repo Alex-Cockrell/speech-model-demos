@@ -136,8 +136,10 @@ export interface ReaderPosition {
   generating: { piece: number; elapsedMs: number } | null;
   /** Audio actually played in this session (excludes pauses, stalls and skipped parts). */
   playedSec: number;
-  /** Estimated listening time left from the current position at the current speed. */
+  /** Estimated listening time left from the current position at the current speed (of the text received so far). */
   remainingSec: number;
+  /** Everything received so far has played and more text is expected (append() before endInput()). */
+  waitingForText: boolean;
 }
 
 export interface Timers {
@@ -151,6 +153,11 @@ export interface ReaderInit {
   ctx: AudioContext;
   backend: ReaderBackend;
   pieces: readonly ReaderPiece[];
+  /**
+   * False when more pieces will be appended (streamed text): playback then waits at the end of the received pieces
+   * instead of ending, until endInput(). Default true.
+   */
+  inputEnded?: boolean;
   startPiece?: number;
   voice: string;
   speed: number;
@@ -205,14 +212,20 @@ const defaultTimers: Timers = {
 export class ReadAloudSession {
   private readonly ctx: AudioContext;
   private readonly backend: ReaderBackend;
-  private readonly pieces: readonly ReaderPiece[];
+  private readonly pieces: ReaderPiece[];
+  private inputEnded: boolean;
   private readonly readAheadSec: number;
   private readonly archiveLimitSec: number;
   private readonly listeners = new Set<() => void>();
   private readonly timers: Timers;
   private readonly output: GainNode;
-  /** charsAfter[i] = displayed characters of pieces i … n-1. */
-  private readonly charsAfter: Float64Array;
+  /** charsBefore[i] = displayed characters of pieces 0 … i-1 (one entry more than there are pieces). */
+  private readonly charsBefore: number[] = [0];
+  private resolveDone!: (status: 'ended' | 'stopped' | 'error') => void;
+  /** Settles once, when the session ends, is stopped or fails. */
+  readonly done: Promise<'ended' | 'stopped' | 'error'> = new Promise((resolve) => {
+    this.resolveDone = resolve;
+  });
 
   private status: ReaderStatus = 'playing';
   private pausedReason: ReaderSnapshot['pausedReason'] = null;
@@ -253,7 +266,8 @@ export class ReadAloudSession {
   constructor(init: ReaderInit) {
     this.ctx = init.ctx;
     this.backend = init.backend;
-    this.pieces = init.pieces;
+    this.pieces = [...init.pieces];
+    this.inputEnded = init.inputEnded ?? true;
     this.readAheadSec = init.readAheadSec ?? DEFAULT_READ_AHEAD_SEC;
     this.archiveLimitSec = init.archiveLimitSec ?? DEFAULT_ARCHIVE_LIMIT_SEC;
     this.timers = init.timers ?? defaultTimers;
@@ -262,8 +276,7 @@ export class ReadAloudSession {
     this.nextIndex = clamp(init.startPiece ?? 0, 0, Math.max(0, init.pieces.length - 1));
     this.output = init.ctx.createGain();
     this.output.connect(speechOutput(init.ctx));
-    this.charsAfter = new Float64Array(init.pieces.length + 1);
-    for (let i = init.pieces.length - 1; i >= 0; i--) this.charsAfter[i] = this.charsAfter[i + 1] + init.pieces[i].chars;
+    for (const piece of init.pieces) this.charsBefore.push(this.charsBefore[this.charsBefore.length - 1] + piece.chars);
     this.metrics = {
       startedAt: now(),
       firstAudioGeneratedAt: null,
@@ -283,7 +296,7 @@ export class ReadAloudSession {
   /** Begin generating and playing from the start piece. */
   start(): void {
     if (this.tick !== null || this.isFinished()) return;
-    if (this.pieces.length === 0) {
+    if (this.pieces.length === 0 && this.inputEnded) {
       this.finish('ended');
       return;
     }
@@ -308,6 +321,26 @@ export class ReadAloudSession {
     return this.pieces.length;
   }
 
+  /** Adds pieces after the last one (streamed text). Ignored after endInput() or once the session has finished. */
+  append(pieces: readonly ReaderPiece[]): void {
+    if (this.inputEnded || this.isFinished() || pieces.length === 0) return;
+    for (const piece of pieces) {
+      this.pieces.push(piece);
+      this.charsBefore.push(this.charsBefore[this.charsBefore.length - 1] + piece.chars);
+    }
+    if (this.tick !== null) this.pump();
+    this.changed();
+  }
+
+  /** No more pieces will be appended: the session ends once the received pieces have played. */
+  endInput(): void {
+    if (this.inputEnded) return;
+    this.inputEnded = true;
+    // Before start(), start() itself ends a session with nothing to say.
+    if (this.tick !== null) this.pump();
+    this.changed();
+  }
+
   /** Live position from the audio clock; cheap enough to poll every frame. */
   position(): ReaderPosition {
     const t = this.ctx.currentTime;
@@ -321,15 +354,16 @@ export class ReadAloudSession {
       const upcoming = this.timeline.find((e) => e.start > t);
       if (upcoming) piece = upcoming.piece;
       else if (this.nextIndex < this.pieces.length) piece = this.nextIndex;
-      else piece = this.status === 'ended' ? null : this.pieces.length - 1;
+      else piece = this.status === 'ended' || this.pieces.length === 0 ? null : this.pieces.length - 1;
     }
     const live = this.status === 'playing' || this.status === 'paused';
     const drained = t >= this.queueEnd;
     // Not while paused: the context clock is stopped, so the silence is not growing.
     const stalled = this.status === 'playing' && this.continuing && drained && this.nextIndex < this.pieces.length;
+    const waitingForText = live && !this.inputEnded && drained && !this.active && this.nextIndex >= this.pieces.length;
     let played = this.playedSec;
     for (const e of this.timeline) played += clamp(t - e.start, 0, e.end - e.start);
-    const charsLeft = piece === null ? 0 : this.charsAfter[piece + 1] + (1 - progress) * (this.pieces[piece]?.chars ?? 0);
+    const charsLeft = piece === null ? 0 : this.charsFrom(piece + 1) + (1 - progress) * (this.pieces[piece]?.chars ?? 0);
     return {
       piece,
       pieceProgress: clamp(progress, 0, 1),
@@ -339,6 +373,7 @@ export class ReadAloudSession {
       generating: this.active ? { piece: this.active.piece, elapsedMs: now() - this.active.requestedAt } : null,
       playedSec: played,
       remainingSec: charsLeft / (this.charsPerSecond() * this.speed),
+      waitingForText,
     };
   }
 
@@ -444,7 +479,11 @@ export class ReadAloudSession {
       this.nextIndex++;
     }
     if (!this.active && this.nextIndex < this.pieces.length && this.aheadSec(t) < this.readAheadSec) this.request(this.nextIndex);
-    if (!this.active && this.nextIndex >= this.pieces.length && this.timeline.length === 0 && t >= this.queueEnd) this.finish('ended');
+    if (!this.active && this.nextIndex >= this.pieces.length && this.timeline.length === 0 && t >= this.queueEnd) {
+      if (this.inputEnded) this.finish('ended');
+      // Waiting for streamed text: the next piece starts playback afresh (its wait is not a stall).
+      else this.continuing = false;
+    }
   }
 
   private aheadSec(t: number): number {
@@ -616,6 +655,12 @@ export class ReadAloudSession {
     }
   }
 
+  /** Displayed characters of pieces from `index` to the last one received. */
+  private charsFrom(index: number): number {
+    const total = this.charsBefore[this.charsBefore.length - 1];
+    return total - this.charsBefore[Math.min(index, this.charsBefore.length - 1)];
+  }
+
   private charsPerSecond(): number {
     return this.rate.sec > 5 ? this.rate.chars / this.rate.sec : DEFAULT_CHARS_PER_SEC;
   }
@@ -717,6 +762,7 @@ export class ReadAloudSession {
     if (this.suspendedByUs && this.ctx.state === 'suspended') this.ctx.resume().catch(() => undefined);
     this.suspendedByUs = false;
     this.changed();
+    this.resolveDone(status);
   }
 
   private changed(): void {
