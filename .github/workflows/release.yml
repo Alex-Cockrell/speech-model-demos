@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   release:
-    # Off until the packages exist on npm and trusted publishing is set up for this workflow (RELEASING.md); then set
+    # Off until the packages exist on npm and trusted publishing is set up for this workflow; then set
     # the repository variable NPM_PUBLISH_ENABLED to true.
     if: vars.NPM_PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-latest

@@ -32,3 +32,6 @@ examples/*/.next/
 examples/*/package-lock.json
 examples/*/public/localspeech/
 examples/*/public/models/
+
+# Maintainer-only release notes (kept locally, not published)
+RELEASING.md
