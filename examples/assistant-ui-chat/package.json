@@ -14,7 +14,7 @@
     "@localspeech/core": "file:../../.tarballs/localspeech-core-0.1.0.tgz",
     "@localspeech/speech-to-text": "file:../../.tarballs/localspeech-speech-to-text-0.1.0.tgz",
     "@localspeech/text-to-speech": "file:../../.tarballs/localspeech-text-to-speech-0.1.0.tgz",
-    "next": "16.3.8",
+    "next": "^16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
